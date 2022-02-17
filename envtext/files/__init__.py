@@ -1,8 +1,8 @@
-env_vocab = 'envText/files/env_vocab.jieba.txt'
-onehot_vocab = 'envText/files/onehot_vocab.txt'
-bert_vocab = 'envText/files/bert_vocab.txt'
-word2vec64 = 'envText/files/word2vec64'
-word2vec256 = 'envText/files/word2vec256'
+env_vocab = 'envtext/files/env_vocab.jieba.txt'
+onehot_vocab = 'envtext/files/onehot_vocab.txt'
+bert_vocab = 'envtext/files/bert_vocab.txt'
+word2vec64 = 'envtext/files/word2vec64'
+word2vec256 = 'envtext/files/word2vec256'
 
 
 import os

@@ -1,5 +1,5 @@
 from transformers import BertForMaskedLM,BertConfig
-from envText.data import DataCollatorForZHWholeWordMask
+from ..data import DataCollatorForZHWholeWordMask
 from transformers import Trainer, TrainingArguments
 import math
 from datasets import Dataset
