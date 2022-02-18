@@ -13,7 +13,8 @@
     - 为神经网络模型精简了接口，只保留了必要的batch_size, learning_rate等参数
     - 进一步优化huggingface transformers输入输出接口，支持20余种数据集格式
     - 一键使用模型，让领域专家精力集中在分析问题上
-    
+
+5. :five: 使用transformers接口，支持轻松自定义模型
 
 下一步计划：  
 - [ ] 数据集支持：支持常用**标注工具**数据集  
@@ -88,15 +89,13 @@ model.save_result('result.csv')
 ```
 #### 2.2 使用RNN
 
-目前RNN的初始化接口没有完全与Bert同步，后续有同步计划，尽请期待。
 ```python
 from envtext.models import RNNCLS
 
-model = RNNCLS()
-model.load('本地pytorch_model.bin所在文件夹')
+model = RNNCLS('本地pytorch_model.bin所在文件夹')
 
 #进行预测
-model('气候[Mask][Mask]是各国政府都关心的话题')
+model('气候变化是各国政府都关心的话题')
 
 #导出结果
 model.save_result('result.csv')
@@ -139,6 +138,68 @@ model = BertCLS('celtics1863/env-bert-chinese',config)
 
 #模型训练
 model.train(datasets)
+```
+
+### 4. 自定义模型
+
+
+首先自定义一个回归任务的Bert模型
+```python
+from envtext.models.bert_base import BertBase
+import torch
+from transformers import BertPreTrainedModel,BertModel
+
+class MyBert(BertPreTrainedModel):
+    def __init__(self, config):
+        super(MyBert, self).__init__(config)
+        self.bert = BertModel(config) #bert模型
+        self.regressor = torch.nn.Linear(config.hidden_size, 1) #回归器
+        self.loss = torch.nn.MSELoss() #损失函数
+        
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None,
+              position_ids=None, inputs_embeds=None, head_mask=None):
+        outputs = self.bert(input_ids,
+                            attention_mask=attention_mask,
+                            token_type_ids=token_type_ids,
+                            position_ids=position_ids,
+                            head_mask=head_mask,
+                            inputs_embeds=inputs_embeds)
+        #使用[CLS] token
+        cls_output = outputs[0][:,0,:] 
+
+        # 得到判别值
+        logits = self.regressor(cls_output)
+
+        outputs = (logits,)
+        
+        #这里需要与bert的接口保持一致，在有labels输入的情况下，返回(loss,logits)，否则返回(logits,)
+        if labels is not None: 
+            loss = self.loss(logits.squeeze(),labels)
+            outputs = (loss,) + outputs
+        return outputs
+
+```
+将模型与envtext的接口对接
+
+```
+class MyBertModel(BertBase):
+    #重写初始化函数
+    def initialize_bert(self,path = None,config = None,**kwargs):
+        super().initialize_bert(path,config,**kwargs)
+        self.model = MyBert.from_pretrained(self.model_path)
+
+    重写预测函数
+    def predict_per_sentence(self,text, print_result = True ,save_result = True):
+        tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device) #获得token
+        logits = self.model(tokens)[0] #获得logits
+        
+        if print_result:
+            #打印结果
+            print(logits[0].clone().detach().cpu())
+        
+        if save_result:
+            #保存结果
+            self.result[text] = logits[0].clone().detach().cpu()
 ```
 
 
