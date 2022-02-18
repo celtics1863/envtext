@@ -1,0 +1,9 @@
+jieba
+datasets
+gensim
+tqdm
+numpy
+pytorch-crf
+pandas
+torch
+transformers

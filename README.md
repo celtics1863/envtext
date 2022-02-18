@@ -58,7 +58,7 @@ pip install envtext -i https://pypi.tuna.tsinghua.edu.cn/simple
 | 实体识别 | BertNER  | RNNNER  | -----    |
 | 词向量  |  -----  |  -----   | Word2Vec |
 
-除文本生成任务外，基本支持大部分模型。
+除文本生成任务外，基本支持绝大部分NLP任务。
 
 Bert 支持环境领域大规模预训练模型`envBert`，也支持其他huggingface transformer的Bert模型。
 
