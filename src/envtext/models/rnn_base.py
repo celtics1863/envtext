@@ -6,6 +6,7 @@ from ..tokenizers import Word2VecTokenizer,OnehotTokenizer
 from tqdm import tqdm
 from collections import defaultdict
 import numpy as np
+import os
 
 class RNNBase(ModelBase):
     def __init__(self,path = None, config = None,model_name = 'lstm', labels = [],num_labels = 0, entities = [],num_entities = 0, \
@@ -158,6 +159,10 @@ class RNNBase(ModelBase):
         self.update_config(config)
         self.update_config(kwargs)
         self.align_config()
+        if path is not None:
+            if os.path.exists(os.path.join(path,'pytorch_model.bin')):
+                self.load(path)
+                print("RNN模型导入成功")
         pass
 
     
@@ -319,8 +324,13 @@ class RNNBase(ModelBase):
             path `str`:
                 模型pytorch_model.bin所在文件夹
         '''
-        self.model = torch.load(os.path.join(path,'pytorch_model.bin'))
-        self.model = self.model.to(self.device)
+        if os.path.exists(os.path.join(path,'pytorch_model.bin')):
+            self.model = torch.load(os.path.join(path,'pytorch_model.bin'))
+            self.model = self.model.to(self.device)
+            print("rnn模型导入成功")
+        else:
+            print("请输入正确的文件夹，确保文件夹里面含有pytorch_model.bin文件")
+        
               
     def _update_train_reports(self,report):
         for k,v in report.items():

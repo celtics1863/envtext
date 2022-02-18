@@ -150,6 +150,10 @@ model.load_dataset('数据集位置',task = 'cls',format = '数据集格式')
 
 #模型训练
 model.train()
+
+
+#模型保存
+model.save_model('classification') #输入待保存的文件夹
 ```
 
 或者：
@@ -164,11 +168,14 @@ model = BertCLS('celtics1863/env-bert-chinese',config)
 
 #模型训练
 model.train(datasets)
+
+#模型保存
+model.save_model('classification') #输入待保存的文件夹
 ```
 
 ### 4. 自定义模型
 
-
+##### 4.1 自定义Bert模型
 首先自定义一个回归任务的Bert模型
 ```python
 from envtext.models.bert_base import BertBase
@@ -207,14 +214,14 @@ class MyBert(BertPreTrainedModel):
 ```
 将模型与envtext的接口对接
 
-```
+```python
 class MyBertModel(BertBase):
     #重写初始化函数
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = MyBert.from_pretrained(self.model_path)
 
-    重写预测函数
+    #重写预测函数
     def predict_per_sentence(self,text, print_result = True ,save_result = True):
         tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device) #获得token
         logits = self.model(tokens)[0] #获得logits
@@ -226,8 +233,75 @@ class MyBertModel(BertBase):
         if save_result:
             #保存结果
             self.result[text] = logits[0].clone().detach().cpu()
+            
+     #[Optional] 可选 重新计算判别值函数，用于训练时提供除loss外的metrics信息
+     def compute_metrics(eval_pred)
+         from envtext.utils.metrics import metrics_for_reg
+         return metrics_for_reg(eval_pred)
+     
+     #[Optional] 可选 用于对齐config中的参数，
+     #因为有的时候需要接受多种参数的输入，例如分类任务时可以接受类别数量，也可以接受类别的列表，这时候可以通过这个接口对齐。
+     def align_config(self):
+         super().align_config()
+         ##可以使用self.update_config() 或 self.set_attribute() 接口重新设置config
+         pass
 ```
 
+##### 4.1 自定义RNN模型
+
+定义RNN模型也是类似的。  
+先实现一个LSTM分类模型如下：
+
+```python
+from torch import nn
+import torch
+class MyRNN(nn.Module):
+    def __init__(self,config):
+        self.rnn = nn.LSTM(config.embed_size, config.hidden_size ,config.num_layers,batch_first = True)
+        self.classifier = nn.Linear(config.hidden_size,config.num_labels)
+    
+    def forward(self,X,labels = None):
+        X,_ = self.rnn(X)
+        logits = self.classifier(X)
+        
+        #对齐接口，仍然需要在labels存在的情况下输出(loss,logits)，不存在的情况下输出(logits,)
+        if labels is not None:
+            loss = self.loss_fn(logits,labels)
+            return (loss,logits) 
+        return (logits,)
+```
+
+再将模型与envtext接口对接，
+```python
+class MyBertModel(BertBase):
+    #重写初始化函数
+    def initialize_bert(self,path = None,config = None,**kwargs):
+        super().initialize_bert(path,config,**kwargs) #保持不变
+        self.model = MyBert.from_pretrained(self.model_path) 
+
+    #重写预测函数
+    def predict_per_sentence(self,text, print_result = True ,save_result = True):
+        tokens=self.tokenizer.encode(text, return_tensors='pt').to(self.model.device) #获得token
+        logits = self.model(tokens)[0] #获得logits
+        preds,probs = torch.argmax(logits,dim = -1) #获得预测结果
+        
+        if print_result:
+            #打印结果
+            print(preds.clone().detach().cpu().numpy())
+        
+        if save_result:
+            #保存结果
+            self.result[text] = preds.clone().detach().cpu().numpy().tolist()
+            
+    #[Optional] 可选 重写metrics，增加loss以外的metric
+    def compute_metrics(eval_pred):
+        return {} #返回一个dict
+        
+    #[Optional] 可选 重写align_config，对齐config参数
+    def align_config(self):
+        super().align_config()
+        pass
+```
 
 更详细的教程，请参见我们的案例 [jupyter notebooks]('jupyter_notebooks')
 
