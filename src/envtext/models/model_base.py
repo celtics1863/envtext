@@ -1,26 +1,54 @@
 from threading import Thread
 from collections import defaultdict
+from transformers.configuration_utils import PretrainedConfig
 import torch #for torch.cuda.is_available
 from ..data.utils import load_dataset
+import os
 
 class ModelBase:
     def __init__(self,*args,**kwargs):
         self.model = None
-        self.config = None
+        self.config = PretrainedConfig(
+            package = 'envtext',
+            liscence = 'Apache Lisence',
+            contact = 'bi.huaibin@foxmail.com',
+            max_length = 512,
+        )
         self.tokenizer = None
         self.datasets = None
         self.data_config = None
         self.args = None
         self.trainer = None
-        self.max_length = 512
         self.result = defaultdict(dict)
-        self.key_metric = 'loss'
+        
         self.training_results = defaultdict(list)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+
+        
+    def set_attribute(self,**kwargs):
+        '''
+        设置参数
+        '''
+        self.config.update(kwargs)
+        
+    @property
+    def max_length(self):
+        '''
+        获得最大长度
+        '''
+        if hasattr(self.config,'max_length'):
+            return self.config.max_length
+        else:
+            return None
     
-    def get_key_metric(self):
-        return self.key_metric
+    @property
+    def key_metric(self):
+        if hasattr(self.config,'key_metric'):
+            return self.config.key_metric
+        else:
+            self.set_attribute(key_metric = 'validation loss')
+            return 'validation loss'
     
     def get_device(self):
         return self.device
@@ -103,12 +131,50 @@ class ModelBase:
         Args:
             save_path `str`: 模型保存的文件夹
         '''
-        if not os.path.exists(save_path):
-            os.makedirs(save_path)
-        torch.save(self._best_model,os.path.join(save_path,'pytorch_model.bin'))
+        if not os.path.exists(os.path.realpath(save_path)):
+            os.makedirs(os.path.realpath(save_path))
+        
+        if hasattr(self.model,'save_pretrained'):
+            self.model.save_pretrained(path)
+        else:
+            torch.save(self._best_model,os.path.join(save_path,'pytorch_model.bin'))
+            if self.config:
+                self.config.save_pretrain(save_path)
 
 
+    def update_config(self,config = None,**kwargs):
+        '''
+       更新模型的配置参数config
+
+       Args:
+           config [Optional] `dict` : 默认None
+               用config的内容更新配置参数
+               如果是None则忽略
+
+
+       Kwargs:
+           可以任何参数，会更新进入配置参数self.config中
+       '''
+        if self.config is None:
+            self.config = PretrainedConfig()
+            
+        if config is None:
+            pass
+        else:
+            if isinstance(config,dict):
+                self.config.update(config)
+            else:
+                assert 'config参数必须是字典'
+        
+        self.config.update(kwargs)
+        
     def predict_sentences(self,text_list,**kwargs):
+        '''
+        预测多个句子
+        Args:
+         text_list `List[str]`:
+             文本的列表
+        '''
         thread_list = []
         for text in text_list:
             thread_list.append(Thread(target = self.predict_per_sentence,args=(text,),kwargs=kwargs))
@@ -162,43 +228,53 @@ class ModelBase:
         self.predict(*args,**kwargs)
         
     def compute_metrics(self,eval_pred):
+        '''
+        计算预测结果评价指标，需要继承之后实现，默认返回为空的dict
+        
+        Args:
+            eval_pred `Tuple(numpy.ndarray)`:
+                eval_pred = (预测结果的概率分布,真实结果)
+                
+       
+       return: `dict` 
+        '''
         self.key_metric = 'validation loss'
-        '''
-        需要继承之后实现
-        '''
         return {}
     
     def predcit_per_sentence(self,text, **kwargs):
         '''
-        需要继承之后实现
-        如果要保存结果，需要保存在self.result里：
+        需要继承之后重新实现
+        如果选择保存结果，结果保存在self.result里：
+        eg: 
             self.result[text] = {
                 'label':预测的结果,
                 }
                 
-       一些常用的参数在本项目中实现，在继承的时候未必要实现：
-           topk `int`： 
-               默认为5,报告预测概率前topk的结果。
+        Args:
+           text `str`
+        
+        Kwargs:
+           topk [Optional] `int`： 默认为5
+               报告预测概率前topk的结果。
            
-           print_result `bool`: 
-               默认为True
+           print_result [Optional] `bool`: 默认为True
                是否打印结果，对于大批量的文本，建议设置为False
                
-           save_result: 
-               默认为True
+           save_result: [Optional] `bool`: 默认为True
                是否保存结果
         '''
         pass
   
     def train(self,my_datasets,epoch ,batch_size , learning_rate ,save_path ,checkpoint_path,**kwargs):
         '''
-        需要继承之后实现
+        需要继承之后重新实现
         '''
         pass
     
             
-    def load_dataset(self,path,task,format ,split=0.5,label_as_key = False,
-                       sep = ' ',dataset = 'dataset',train = 'train',valid = 'valid' ,test = 'test', text = 'text', label = 'label'):
+#     def load_dataset(self,path,task,format ,split=0.5,label_as_key = False,
+#                        sep = ' ',dataset = 'dataset',train = 'train',valid = 'valid' ,test = 'test', text = 'text', label = 'label'):
+    def load_dataset(self,*args,**kwargs):
         '''
         读取数据集。
           参见 envText.data.utils.load_dataset
@@ -208,24 +284,81 @@ class ModelBase:
                 数据集的路径
                 
             task `str`:
-                任务名称：
-                分类任务：'cls','classification','CLS','class'
-                回归任务：'reg'，'regression','REG'
-                情感分析：'sa','SA','Sentimental Analysis'
-                命名实体识别：'ner','NER','namely entity recognition'
-                多选：'MC','mc','multi-class','multi-choice','mcls'
-                关键词识别：'key word','kw','key_word'
+                通用任务名称：
+                    分类任务：'cls','classification','CLS','class'
+                    回归任务：'reg'，'regression','REG'
+                    情感分析：'sa','SA','Sentimental Analysis'
+                    命名实体识别：'ner','NER','namely entity recognition'
+                    多选：'MC','mc','multi-class','multi-choice','mcls'
+                    关键词识别：'key','kw','key word','keyword','keywords','key words'
                 
-           format `str`:
+               专用任务名称：
+                   2020CLUENER: 'clue_ner','cluener','CLUENER' 
+                
+           format [Optional] `str`:
                格式：详细见envText.data.utils.load_dataset的注释
                - json: json的格式
+                   {'train':{'text':[],'label':[]},'valid':{'text':[],'label':[]}}
+                   或 {'text':[],'label':[]}
                - json2:json的格式，但是label作为key
+                   {'train':{'label1':[],'label2':{},...},'valid':{'label1':[],'label2':{},...}}
+                   或 {'label1':[],'label2':{},...}
                - text: 纯文本格式，一行中同时有label和text
+                       text label datasets
+                       text1 label1 train
+                       text2 label2 valid
+                       ...
+                   或
+                       text label
+                       text1 label1
+                       text2 label2
+                       ...
+                   或
+                       train
+                       text1 label1
+                       text2 label2
+                       ...
+                       valid
+                       text1 label1
+                       text2 label2
+                       ...
+    
                - text2:纯文本格式，一行text，一行label
+                       train
+                       text1
+                       label1
+                       ...
+                       valid
+                       text2
+                       label2
+                       ...
+                    或：
+                       text1
+                       label1
+                       text2
+                       label2
                - excel: excel,csv等格式
-       
-       Kwargs:        
-           sep [Optional] `str`: 默认：' '
+                  |text | label | dataset |
+                  | --- | ---  | ------ |
+                  |text1| label1| train |
+                  |text2| label2| valid |
+                  |text3| label3| test |
+                  或
+                  |text | label | 
+                  | --- | ---  | 
+                  |text1| label1|
+                  |text2| label2|
+                  |text3| label3|
+       Kwargs:   
+         
+         split [Optional] `float`: 默认：0.5
+               训练集占比。
+               当数据集没有标明训练/验证集的划分时，安装split:(1-split)的比例划分训练集:验证集。
+               
+         sampler [Optional] `float`: 默认：1
+               当sampler在0-1是，对数据集进行随机采样，以概率p = sampler随机保留数据。
+               
+          sep [Optional] `str`: 默认：' '
                分隔符：
                text文件读取时的分隔符。
                如果keyword、ner任务中，实体标注没有用list分开，而是用空格或逗号等相连，则sep作为实体之间的分隔符。
@@ -265,7 +398,6 @@ class ModelBase:
                   |text3| label3| test |
          
          
-         
          test `str: 默认：'test'
            标示数据是训练/验证集/测试集
             例如csv文件中：
@@ -294,7 +426,9 @@ class ModelBase:
                   |text3| label3| test  |
         '''
         try:
-            self.datasets,self.data_config = load_dataset(path,task,format,split,label_as_key,sep,dataset,train,valid,test,text,label)
+#             self.datasets,self.data_config = load_dataset(path,task,format,split,label_as_key,sep,dataset,train,valid,test,text,label)
+            self.datasets,self.data_config = load_dataset(*args,**kwargs)
+
             print("*"*7,"读取数据集成功","*"*7)
         except Exception as e:
             print("*"*7,"读取数据集失败","*"*7)

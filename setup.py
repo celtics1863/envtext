@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="envtext",
-    version="0.0.5",
+    version="0.0.6",
     author="Bi Huaibin",
     author_email="bi.huaibin@foxmail.com",
     description="envtext for Chinese texts analysis in Environment domain",

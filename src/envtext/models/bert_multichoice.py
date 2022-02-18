@@ -41,7 +41,25 @@ class BertMultiChoice(BertBase):
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = BertMultiCLS.from_pretrained(self.model_path,config = self.config)
+        if self.key_metric == 'validation loss':
+            if self.num_labels == 1:
+                self.set_attribute(key_metric = 'f1')
+            else:
+                self.set_attribute(key_metric = 'macro_f1')
     
+    def align_config(self):
+        super().align_config()
+        if self.labels:
+            self.update_config(num_labels = len(self.labels))   
+        elif self.num_labels:
+            self.update_config(labels = list(range(self.num_labels)))
+        else:
+            self.update_config(num_labels = 1,
+                         labels = ['LABEL_0'],
+                         id2label = {0:'LABEL_0'},
+                         label2id = {'LABEL_0':0},
+                         )
+            
     def predict_per_sentence(self,text,print_result = True, save_result = True):
         tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device)
         logits = self.model(tokens)[0]
@@ -73,5 +91,4 @@ class BertMultiChoice(BertBase):
         
     def compute_metrics(self,eval_pred):
         dic = metrics_for_cls_with_binary_logits(eval_pred)
-        self.key_metric = 'macro_f1'
         return dic

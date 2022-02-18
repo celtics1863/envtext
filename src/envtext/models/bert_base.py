@@ -12,8 +12,9 @@ class BertBase(ModelBase):
         self.update_config(kwargs)
         self.update_config(config)
         self.initialize_bert(path)
+        self.set_attribute(key_metric = 'loss')
         
-    
+        
     def initialize_tokenizer(self,path):
         '''
         初始化tokenizer
@@ -24,21 +25,27 @@ class BertBase(ModelBase):
             print("导入Vocab.txt失败，从celtics1863/env-bert-chinese导入")
             self.tokenizer = BertTokenizerFast.from_pretrained('celtics1863/env-bert-chinese')
 
-   
+
     def initialize_config(self,path):
         '''
         初始化config
         '''
         if os.path.exists(os.path.join(path,'config.json')):
-            self.config = BertConfig.from_pretrained(path)
-            self.config ._name_or_path = path
+            config = BertConfig.from_pretrained(path)
         else:
-            self.config = BertConfig()
-            self.config._name_or_path
+            config = BertConfig()
+        config.update(self.config.to_dict())
+        self.config = config
+    
+    def align_config(self):
+        '''
+        对齐config，在initialize_bert的时候调用，如有必要则进行重写。
+        '''
+        pass
     
     def initialize_bert(self,path = None,config = None,**kwargs):
         '''
-        初始化bert,需要继承后实现
+        初始化bert,需要继承之后重新实现
         Args:
             BertPretrainedModel `transformers.models.bert.modeling_bert.BertPreTrainedModel`:
                 Hugging face transformer版本的 Bert模型
@@ -56,6 +63,8 @@ class BertBase(ModelBase):
             self.update_config(config)
             
         self.update_config(kwargs)
+        
+        self.align_config()
             
         #例如：
         #self.model = BertPretrainedModel.from_pretrained(self.model_path)
@@ -64,18 +73,7 @@ class BertBase(ModelBase):
     def add_spetial_tokens(self,tokens):
         self.tokenizer.add_special_tokens({'additional_special_tokens':tokens})
         self.model.resize_token_embeddings(len(self.tokenizer))
-        
-    def update_config(self,config):
-        '''
-        更新config
-        '''
-        if self.config is None:
-            pass
-        else:
-            if isinstance(config,dict):
-                self.config.update(config)
-            else:
-                assert 'config参数必须是字典'
+
     
     def update_model_path(self,path):
         '''
@@ -90,38 +88,73 @@ class BertBase(ModelBase):
     @property
     def model_path(self):
         '''
-        获得模型路径
+        获得模型路径，没有路径则返回None
         '''
-        return self.config._name_or_path
+        if hasattr(self.config,'_name_or_path'):
+            return self.config._name_or_path
+        else:
+            return None
     
     @property
     def label2id(self):
         '''
         返回一个dict,标签转id
         '''
-        return self.config.label2id
-
+        if hasattr(self.config,'label2id'):
+            return self.config.label2id
+        else:
+            return None
+        
     @property
     def id2label(self):
         '''
         返回一个dict,id转标签
         '''
-        return self.config.id2label
-    
+        if hasattr(self.config,'id2label'):
+            return self.config.id2label
+        else:
+            return None
+        
     @property
     def labels(self):
         '''
         返回一个list,所有标签
         '''
-        return self.config.labels
-    
+        if hasattr(self.config,'labels'):
+            return self.config.labels
+        else:
+            return None
+        
     @property
     def entities(self):
         '''
         返回一个list,所有实体
         '''
-        return self.config.entities   
-    
+        if hasattr(self.config,'entities'):
+            return self.config.entities   
+        else:
+            return None
+        
+    @property
+    def num_labels(self):
+        '''
+        返回一个list,所有标签
+        '''
+        if hasattr(self.config,'num_labels'):
+            return self.config.num_labels
+        else:
+            return None
+
+    @property
+    def num_entities(self):
+        '''
+        返回一个list,所有标签
+        '''
+        if hasattr(self.config,'num_entities'):
+            return self.config.num_entities
+        else:
+            return None
+
     def get_train_reports(self):
         '''
         获得训练集metrics报告
@@ -200,7 +233,9 @@ class BertBase(ModelBase):
             "valid":Dataset.from_dict(my_datasets['valid'])}
         print('train dataset: \n',dataset['train'])
         print('valid dataset: \n',dataset['valid'])
-        self.max_length = max_length
+        
+        self.set_attribute(max_length = max_length)
+        
         g = lambda data:data.map(self._tokenizer_for_training,remove_columns=["text"]) #batched=True, num_proc=4,
         tokenized_datasets = {}
         for K,V in dataset.items():
@@ -257,12 +292,64 @@ class BertBase(ModelBase):
            format `str`:
                格式：详细见envText.data.utils.load_dataset的注释
                - json: json的格式
+                   {'train':{'text':[],'label':[]},'valid':{'text':[],'label':[]}}
+                   或 {'text':[],'label':[]}
                - json2:json的格式，但是label作为key
+                   {'train':{'label1':[],'label2':{},...},'valid':{'label1':[],'label2':{},...}}
+                   或 {'label1':[],'label2':{},...}
                - text: 纯文本格式，一行中同时有label和text
+                       text label datasets
+                       text1 label1 train
+                       text2 label2 valid
+                       ...
+                   或
+                       text label
+                       text1 label1
+                       text2 label2
+                       ...
+                   或
+                       train
+                       text1 label1
+                       text2 label2
+                       ...
+                       valid
+                       text1 label1
+                       text2 label2
+                       ...
+    
                - text2:纯文本格式，一行text，一行label
+                       train
+                       text1
+                       label1
+                       ...
+                       valid
+                       text2
+                       label2
+                       ...
+                    或：
+                       text1
+                       label1
+                       text2
+                       label2
                - excel: excel,csv等格式
+                  |text | label | dataset |
+                  | --- | ---  | ------ |
+                  |text1| label1| train |
+                  |text2| label2| valid |
+                  |text3| label3| test |
+                  或
+                  |text | label | 
+                  | --- | ---  | 
+                  |text1| label1|
+                  |text2| label2|
+                  |text3| label3|
+       Kwargs:   
+         
+         split [Optional] `float`: 默认：0.5
+               训练集占比。
+               当数据集没有标明训练/验证集的划分时，安装split:(1-split)的比例划分训练集:验证集。
                
-           sep [Optional] `str`: 默认：' '
+          sep [Optional] `str`: 默认：' '
                分隔符：
                text文件读取时的分隔符。
                如果keyword、ner任务中，实体标注没有用list分开，而是用空格或逗号等相连，则sep作为实体之间的分隔符。
@@ -300,7 +387,6 @@ class BertBase(ModelBase):
                   |text1| label1| train |
                   |text2| label2| **valid** |
                   |text3| label3| test |
-         
          
          
          test `str: 默认：'test'

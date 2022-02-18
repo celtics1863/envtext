@@ -14,6 +14,7 @@ class RNNREGModel(nn.Module):
             self.embed_layer = nn.Embeddings(token_size,embed_size)
         else:
             self.embed_layer = nn.Identity()
+            embed_size = token_size
             
         if model_name.lower() == 'lstm':
             self.rnn = nn.LSTM(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
@@ -28,10 +29,6 @@ class RNNREGModel(nn.Module):
             )
         
         self.loss_fn = nn.MSELoss()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.model_name = model_name
         
     def forward(self,X,labels=None):
         X = self.embed_layer(X)
@@ -39,23 +36,25 @@ class RNNREGModel(nn.Module):
         logits = self.fc(X)
         outputs = (logits,)
         if labels is not None:
-            loss = self.loss_fn(logits,labels)
+            loss = self.loss_fn(logits.squeeze(),labels)
             outputs = (loss,) + outputs
         return outputs
     
 class RNNSA(RNNBase):
-    def __init__(self,model_name = 'lstm', max_length = 128 , token_size = 512, hidden_size = 512 ,num_layers =3 ,embed_size = 512,token_method = 'word2vec'):
-        super().__init__()
-            
-        if token_method == 'word2vec':
-            self.tokenizer = Word2VecTokenizer(max_length = 128,padding=True,truncation=True) 
-            self.model = RNNREGModel(max_length, self.tokenizer.vector_size, token_size , hidden_size ,num_layers, None , model_name)
-        else:
-            self.tokenizer = OnehotTokenizer(max_length = 128,padding=True,truncation=True) 
-            self.model = RNNREGModel(max_length, self.tokenizer.vector_size, token_size , hidden_size ,num_layers, embed_size ,model_name)
+    def initialize_rnn(self,path = None,config = None,**Kwargs):
+        super().initialize_rnn(path,config,**Kwargs)
+        self.model = RNNREGModel(self.config.max_length,
+                 self.tokenizer.vector_size,
+                 self.config.hidden_size,
+                 self.config.num_layers,
+                 self.config.embed_size,
+                 self.config.model_name
+                )
         
         self.model = self.model.to(self.device)
-            
+        if self.key_metric == 'validation loss':
+            self.set_attribute(key_metric = 'rmse')
+
     def predict_per_sentence(self,text, print_result = True ,save_result = True):
         tokens=torch.tensor(self.tokenizer.encode(text),device = self.device)
         with torch.no_grad():
@@ -65,8 +64,7 @@ class RNNSA(RNNBase):
         
         if save_result:
             self._save_per_sentence_result(text,logits[0])
-            
-            
+   
     def _report_per_sentence(self,text,score):
         log = f'text:{text} score: {score.cpu().item()} \n '
         print(log)
@@ -80,5 +78,4 @@ class RNNSA(RNNBase):
         
     def compute_metrics(self,eval_pred):
         dic = metrics_for_reg(eval_pred)
-        self.key_metric = 'rmse'
         return dic

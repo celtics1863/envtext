@@ -1,5 +1,8 @@
 from .load_dataset import *
 from collections import defaultdict
+from ..files import FileConfig
+
+
 def sampler_dataset(dataset, p = 0.5):
     import random
     sampled_dataset = {'train':defaultdict(list),'valid':defaultdict(list),'test':defaultdict(list)}
@@ -13,7 +16,23 @@ def sampler_dataset(dataset, p = 0.5):
     return sampled_dataset
 
 
-def load_dataset(path,task,format = None,split=0.5,label_as_key = False,
+#确认task
+def _unify_task(task):
+    if task.lower() in [0,'cls','classification','classify']:
+        return 'CLS'
+    elif task.lower() in [1,'reg','regression','regressor','sa','sentitive analysis']:
+        return 'REG'
+    elif task.lower() in [2,'ner','namely entity recognition']:
+        return 'NER'
+    elif task.lower() in [2,'key','kw','key word','keyword','keywords','key words']:
+        return 'KW'
+    elif task.lower() in [3,'mcls','multi-class','multiclass','multiclasses','mc','multi-choice','multichoice']:
+        return 'MCLS'
+    elif task.lower() in [4,'cluener','clue_ner','clue ner']:
+        return 'CLUENER'
+
+
+def load_dataset(path,task = None,format = None , sampler = 1 ,split=0.5,label_as_key = False,
                        sep = ' ',dataset = 'dataset',train = 'train',valid = 'valid' ,test = 'test', text = 'text', label = 'label'):
     '''
     读取数据集的通用接口，用来处理各种输入。
@@ -27,7 +46,7 @@ def load_dataset(path,task,format = None,split=0.5,label_as_key = False,
             {'train':{'label_1':[],  'label_2':[], ... },...}
                或 
             {'label_1':[],  'label_2':[], ... } 以split为比例随机划分训练集和验证集
-   format = 'json_L'
+   format = 'jsonL'
         适用于如下类型的json line数据格式：
             {'text': text_1,  'label':label_1, 'dataset':'train'}
             {'text': text_2,  'label':label_2, 'dataset':'train'}
@@ -100,31 +119,49 @@ def load_dataset(path,task,format = None,split=0.5,label_as_key = False,
        
     '''
 #     kwargs = {'task':task,'split':split,'sep':sep,'dataset':dataset,'train':train,'valid':valid,'test':test,'label':label}
+    config = FileConfig()
+
+    if path.lower() in config.datasets_names:
+        info = config.datasets_info[config.datasets_names[path.lower()]]
+        task = info['task']
+        format = info['format']
+        path = info['path']
+        
+    task = _unify_task(task)
+    
+    if task == 'CLUENER':
+        format = 'jsonL'
+        
     if format is None:
         if path.split('.')[-1] == 'json':
             try:
-                return LoadJson.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+                datasets,config = LoadJson.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
             except:
-                return LoadJson2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+                datasets,config = LoadJson2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
         elif path.split('.')[-1] == 'csv':
-            return LoadExcel.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+            datasets,config = LoadExcel.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
         else:
             try:
-                return LoadText.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+                datasets,config = LoadText.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
             except:      
-                return LoadText2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+                datasets,config = LoadText2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
             
     elif format == 'json' and not label_as_key:
-        return LoadJson.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadJson.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
     elif format == 'json2' or (format == 'json' and label_as_key):
-        return LoadJson2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadJson2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
     elif format == 'jsonL':
-        return LoadJsonL.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadJsonL.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
     elif format == 'text':
-        return LoadText.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadText.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
     elif format == 'text2':
-        return LoadText2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadText2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
     elif format == 'excel':
-        return LoadExcel.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadExcel.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
     else:
         raise NotImplemented
+    
+    if sampler and 0 < sampler < 1:
+        datasets = sampler_dataset(datasets,sampler)
+    
+    return datasets,config

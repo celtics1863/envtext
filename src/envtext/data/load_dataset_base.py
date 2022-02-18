@@ -15,7 +15,10 @@ class LoadDataset:
 
     @staticmethod
     def generate_datasets(js,task,train,valid,test,text,label,sep = ' ' ,label_as_key = False):
-        task = _unify_task(task)
+#         task = _unify_task(task)
+        if task == 'CLUENER':
+            return generate_cluener_datasets(js,train,valid,test,text,label)
+        
         if not label_as_key:
             if task == 'CLS':
                 return generate_cls_datasets(js,train,valid,test,text,label)
@@ -26,7 +29,7 @@ class LoadDataset:
             elif task == 'KW':
                 return generate_keyword_datasets(js,train,valid,test,text,label,sep)
             elif task == 'NER':
-                return generate_cluener_ner_datasets(js,train,valid,test,text,label)
+                return generate_keyword_datasets(js,train,valid,test,text,label)
             else:
                 raise NotImplemented
         else:
@@ -39,18 +42,6 @@ class LoadDataset:
             else:
                 raise NotImplemented
                 
-#确认task
-def _unify_task(task):
-    if task.lower() in [0,'cls','classification','classify']:
-        return 'CLS'
-    elif task.lower() in [1,'reg','regression','regressor','sa','sentitive analysis']:
-        return 'REG'
-    elif task.lower() in [2,'ner','namely entity recognition']:
-        return 'NER'
-    elif task.lower() in [2,'key','kw','key word','keyword','keywords','key words']:
-        return 'KW'
-    elif task.lower() in [3,'mcls','multi-class','multiclass','multiclasses']:
-        return 'MCLS'
 
 #将标签转换为数字label
 def convert_label2onehot(ids,labels):
@@ -328,7 +319,7 @@ def generate_keyword_datasets(js,train,valid,test,text,label,sep):
 
     return datasets,config
 
-def generate_cluener_ner_datasets(js,train,valid,test,text,label):
+def generate_cluener_datasets(js,train,valid,test,text,label):
     #数据集
     datasets = { 'train':defaultdict(list),'valid':defaultdict(list),'test':defaultdict(list)}
     mapping = { train:'train', valid:'valid', test:'test'}
@@ -392,7 +383,10 @@ def generate_cluener_ner_datasets(js,train,valid,test,text,label):
 
     #数据集参数
     config = {
-           'labels':labels,
+           'labels':list(label2id.keys()),
+           'entities':labels,
+           'num_labels':len(label2id),
+           'num_entities':len(labels),
            'label2id':label2id,
            'id2label':id2label,
            'counter':counter,
@@ -477,3 +471,7 @@ def generate_ner_datasets_label_as_key(js,train,valid,test,text,label):
            }
 
     return datasets,config
+
+
+def generate_ner_datasets(js,train,valid,test,text,label):
+    pass

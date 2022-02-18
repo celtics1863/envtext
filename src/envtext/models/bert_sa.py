@@ -40,6 +40,8 @@ class BertSA(BertBase):
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = BertREG.from_pretrained(self.model_path)
+        if self.key_metric == 'validation loss':
+            self.set_attribute(key_metric = 'rmse')
         
     def predict_per_sentence(self,text, print_result = True ,save_result = True):
         tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device)
@@ -64,5 +66,4 @@ class BertSA(BertBase):
         
     def compute_metrics(self,eval_pred):
         dic = metrics_for_reg(eval_pred)
-        self.key_metric = 'rmse'
         return dic

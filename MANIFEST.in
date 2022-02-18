@@ -1,2 +1,2 @@
 include *.md
-recursive-include src *.txt *.py word2vec* *.vocab
+recursive-include src *.txt *.py word2vec* *.vocab *.json *.csv

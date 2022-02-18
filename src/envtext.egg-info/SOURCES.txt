@@ -18,6 +18,9 @@ src/envtext/files/bert_vocab.txt
 src/envtext/files/env_vocab.jieba.txt
 src/envtext/files/onehot_vocab.txt
 src/envtext/files/word2vec64
+src/envtext/files/datasets/CLS_IsClimate.json
+src/envtext/files/datasets/CLUENER.json
+src/envtext/files/datasets/SA_Intensity.json
 src/envtext/models/__init__.py
 src/envtext/models/bert_base.py
 src/envtext/models/bert_cls.py

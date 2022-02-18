@@ -10,7 +10,6 @@ from ..utils.metrics import metrics_for_cls
 class RNNNERModel(nn.Module):
     def __init__(self,length,token_size,hidden_size ,num_layers, num_classes, embed_size = None  , model_name ='lstm'):
         super().__init__()
-        
         if embed_size and num_embeddings:
             self.embed_layer = nn.Embeddings(token_size,embed_size)
         else:
@@ -26,7 +25,7 @@ class RNNNERModel(nn.Module):
         
         self.fc = nn.Linear(hidden_size*2,num_classes)
         
-        self.loss = CRF(num_classes,batch_first=True)
+        self.crf = CRF(num_classes,batch_first=True)
         
     def forward(self,X,labels=None):
         X = self.embed_layer(X)
@@ -34,54 +33,126 @@ class RNNNERModel(nn.Module):
         logits = self.fc(X)
         outputs = (logits,)
         if labels is not None:
-            loss = self.loss_fn(logits,labels)
+            #处理label长度和logits长度不一致的问题
+            B,L,C,S = logits.shape[0],logits.shape[1],logits.shape[2],labels.shape[1]
+            if S > L :
+                labels = labels[:,:L]
+                loss_mask = labels.gt(-1)
+            elif S < L:
+                pad_values = torch.tensor([[-100]],device = logits.device).repeat(B,L-S)
+                labels = torch.cat([labels,pad_values],dim=1)
+                loss_mask = labels.gt(-1)
+            else:
+                loss_mask = labels.gt(-1)
+            
+            labels[~loss_mask] = 0
+            loss = self.crf(logits, labels.long(), mask = loss_mask.bool()) * (-1)
             outputs = (loss,) + outputs
+            
         return outputs
     
 class RNNNER(RNNBase):
-    def __init__(self,model_name = 'lstm',entities=None, max_length = 128 , hidden_size = 512 ,num_layers =3 ,embed_size = 512,token_method = 'word2vec'):
-        '''
-        Args:
-            model_name [Optional] `str`:
-                在'lstm','rnn','gru'三个中的一个
-                
-            entities [Optional] `int` or `List`:
-                实体个数或实体名称
-                默认为1个实体，标签为['B','I','O']
-                
-           max_length [Optional]`int`:
-               文本序列的最大长度
-               
-           hidden_size [Optional] `int`:
-               隐藏层大小
-               
-           num_layers [Optional] `int`:
-               默认3，RNN的层数
-               
-           embed_size [Optional] `int`:
-               向量嵌入维度，只有当token_method = 'onehot'时会使用
-        '''
-        super().__init__()
-        if entities is None:
-            self.num_labels = 3
-            self.entities = ['B','I','O']
-        elif isinstance(entities,int):
-            self.num_labels = labels
-            self.entities = list(range(entities))
-        elif isinstance(entities,list):
-            self.num_labels = len(labels)
-            self.entities = entities
-        
-        
-        if token_method == 'word2vec':
-            self.tokenizer = Word2VecTokenizer(max_length = 128,padding=True,truncation=True) 
-            self.model = RNNNERModel(max_length, self.tokenizer.vector_size, hidden_size ,num_layers, self.num_labels, None , model_name)
-        else:
-            self.tokenizer = OnehotTokenizer(max_length = 128,padding=True,truncation=True) 
-            self.model = RNNNERModel(max_length, self.tokenizer.vector_size, hidden_size ,num_layers, self.num_labels, embed_size ,model_name)
-            
+    def initialize_rnn(self,path = None,config = None,**Kwargs):
+        super().initialize_rnn(path,config,**Kwargs)
+        self.model = RNNNERModel(self.config.max_length,
+                         self.tokenizer.vector_size,
+                         self.config.hidden_size,
+                         self.config.num_layers,
+                         self.config.num_labels,
+                         self.config.embed_size,
+                         self.config.model_name
+                        )
         self.model = self.model.to(self.device)
+        if self.key_metric == 'validation loss':
+            if self.num_entities == 1:
+                self.set_attribute(key_metric = 'f1')
+            else:
+                self.set_attribute(key_metric = 'macro_f1')
         
+    def align_config(self):
+        super().align_config()
+        if self.entities:
+            if not self.num_entities:
+                num_entities = len(self.entities)
+            else:
+                num_entities = self.num_entities
+            
+            num_labels = len(self.entities) * 2 +1
+
+            if not self.labels or len(self.labels) != num_labels:
+                labels = ['O']
+                for e in self.entities:
+                    labels.append(f'B-{e}')
+                    labels.append(f'I-{e}')
+            else:
+                labels = self.labels
+
+            self.update_config(num_entities = num_entities,
+                         num_labels = num_labels,
+                         labels = labels)   
+            
+        elif self.num_entities:
+
+            entities = [f'entity-{i}' for i in range(self.num_entities)]
+            
+            num_labels = self.num_entities * 2 +1
+            
+            if not self.labels or len(self.labels) != num_labels:
+                labels = ['O']
+                for e in entities:
+                    labels.append(f'B-{e}')
+                    labels.append(f'I-{e}')
+            else:
+                labels = self.labels
+            
+            self.update_config(
+                         entities = entities,
+                         num_labels = num_labels,
+                         labels = labels
+                         )
+        
+        elif self.labels:
+            num_labels = len(self.labels)
+            if num_labels % 2 == 0:
+                assert 0,"在NER任务中，配置参数labels的长度必须是奇数，可以通过set_attribute()或者初始化传入entities,num_entities或正确的labels进行修改"
+            num_entities = num_labels//2
+            entities = [f'entity-{i}' for i in range(num_entities)]
+            self.update_config(
+                     entities = entities,
+                     num_labels = num_labels,
+                     num_entities = num_entities
+                     )
+            
+        elif self.num_labels:
+            if self.num_labels % 2 == 0:
+                assert 0,"在NER任务中，配置参数num_labels必须是奇数，可以通过set_attribute()或者初始化传入entities,num_entities或正确的num_labels进行修改"
+            num_entities = num_labels//2
+            entities = [f'entity-{i}' for i in range(num_entities)]
+            labels = ['O']
+            for e in entities:
+                labels.append(f'B-{e}')
+                labels.append(f'I-{e}')
+                
+            self.update_config(
+                         entities = entities,
+                         num_entities = num_entities,
+                         labels = labels
+                         )
+
+        else:
+            entities = ['entity']
+            num_entities = 1
+            num_labels = 3
+            labels = ['O','B','I']
+            
+            self.update_config(
+                 entities = entities,
+                num_entities = num_entities,
+                num_labels = num_labels,
+                labels = labels
+            )
+        
+            
     def predict_per_sentence(self,text, print_result = True ,save_result = True):
         tokens=torch.tensor(self.tokenizer.encode(text),device = self.device)
         with torch.no_grad():
@@ -158,5 +229,5 @@ class RNNNER(RNNBase):
         self.result[text] = result
         
     def compute_metrics(self,eval_pred):
-        self.key_metric='f1'
-        return metrics_for_ner(eval_pred)
+        dic = metrics_for_ner(eval_pred)
+        return dic

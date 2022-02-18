@@ -10,8 +10,29 @@ class BertCLS(BertBase):
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = BertForSequenceClassification.from_pretrained(self.model_path,config = self.config)
-    
+        if self.key_metric == 'loss':
+            if self.num_labels == 2:
+                self.set_attribute(key_metric = 'f1')
+            else:
+                self.set_attribute(key_metric = 'macro_f1')
+        
+    def align_config(self):
+        super().align_config()
+        if self.labels:
+            self.update_config(num_labels = len(self.labels))   
+        elif self.num_labels:
+            self.update_config(labels = list(range(self.num_labels)))
+        else:
+            self.update_config(num_labels = 2,
+                         labels = ['LABEL_0','LABEL_1'],
+                         id2label = {0:'LABEL_0',1:'LABEL_1'},
+                         label2id = {'LABEL_0':0,'LABEL_1':1},
+                         )
+            
     def predict_per_sentence(self,text,topk=5,print_result = True,save_result = True):
+        '''
+        预测单个句子
+        '''
         tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device)
         logits = F.softmax(self.model(tokens)['logits'],dim=-1)
         topk = topk if logits.shape[-1] > topk else logits.shape[-1]
@@ -43,10 +64,6 @@ class BertCLS(BertBase):
         
     def compute_metrics(self,eval_pred):
         dic = metrics_for_cls(eval_pred)
-        if 'f1' in dic.keys():
-            self.key_metric = 'f1'
-        else:
-            self.key_metric = 'micro_f1'
 #         self.training_results['confusion matrix'].append(confusion_matrix(eval_pred))
 #         self.training_results['report'].append(dic)
         return dic

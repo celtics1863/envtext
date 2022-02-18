@@ -41,25 +41,37 @@ class RNNCLSModel(nn.Module):
         return outputs
     
 class RNNCLS(RNNBase):
-    def __init__(self,model_name = 'lstm',labels=None, max_length = 128 , token_size = 512, hidden_size = 512 ,num_layers =3 ,embed_size = 512,token_method = 'word2vec'):
-        super().__init__()
-        if isinstance(labels,int):
-            self.num_labels = labels
-            self.labels = list(range(labels))
-        elif isinstance(labels,list):
-            self.num_labels = len(labels)
-            self.labels = labels
-
-        self.id2label = {idx:l for idx,l in enumerate(labels)}
-            
-        if token_method == 'word2vec':
-            self.tokenizer = Word2VecTokenizer(max_length = 128,padding=True,truncation=True) 
-            self.model = RNNCLSModel(max_length, self.tokenizer.vector_size, token_size , hidden_size ,num_layers, self.num_labels, None , model_name)
+    def align_config(self):
+        super().align_config()
+        if self.labels:
+            self.update_config(num_labels = len(self.labels))   
+        elif self.num_labels:
+            self.update_config(labels = list(range(self.num_labels)))
         else:
-            self.tokenizer = OnehotTokenizer(max_length = 128,padding=True,truncation=True) 
-            self.model = RNNCLSModel(max_length, self.tokenizer.vector_size, token_size , hidden_size ,num_layers, self.num_labels, embed_size ,model_name)
-        
+            self.update_config(num_labels = 2,
+                         labels = ['LABEL_0','LABEL_1'],
+                         id2label = {0:'LABEL_0',1:'LABEL_1'},
+                         label2id = {'LABEL_0':0,'LABEL_1':1},
+                         )
+
+    def initialize_rnn(self,path = None,config = None,**kwargs):
+        super().initialize_rnn(path,config,**kwargs)
+        self.model = RNNCLSModel(self.config.max_length,
+                         self.tokenizer.vector_size,
+                         self.config.hidden_size,
+                         self.config.num_layers,
+                         self.config.num_labels,
+                         self.config.embed_size,
+                         self.config.model_name
+                        )
         self.model = self.model.to(self.device)
+        
+        if self.key_metric == 'validation loss' or self.key_metric == 'loss':
+            if self.num_labels == 1:
+                self.set_attribute(key_metric = 'f1')
+            else:
+                self.set_attribute(key_metric = 'macro_f1')
+    
     
     def predict_per_sentence(self,text,topk = 3,save_result = True,print_result = True):
         tokens=torch.tensor(self.tokenizer.encode(text),device = self.device)
@@ -94,8 +106,4 @@ class RNNCLS(RNNBase):
         
     def compute_metrics(self,eval_pred):
         dic = metrics_for_cls(eval_pred)
-        if 'f1' in dic.keys():
-            self.key_metric = 'f1'
-        else:
-            self.key_metric = 'macro_f1'
         return dic

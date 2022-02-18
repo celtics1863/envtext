@@ -127,10 +127,99 @@ class BertNER(BertBase):
            默认:1
            是否使用lstm
     '''
+    def align_config(self):
+        super().align_config()
+        if self.entities:
+            if not self.num_entities:
+                num_entities = len(self.entities)
+            else:
+                num_entities = self.num_entities
+            
+            num_labels = len(self.entities) * 2 +1
+
+            if not self.labels or len(self.labels) != num_labels:
+                labels = ['O']
+                for e in self.entities:
+                    labels.append(f'B-{e}')
+                    labels.append(f'I-{e}')
+            else:
+                labels = self.labels
+
+            self.update_config(num_entities = num_entities,
+                         num_labels = num_labels,
+                         labels = labels)   
+            
+        elif self.num_entities:
+
+            entities = [f'entity-{i}' for i in range(self.num_entities)]
+            
+            num_labels = self.num_entities * 2 +1
+            
+            if not self.labels or len(self.labels) != num_labels:
+                labels = ['O']
+                for e in entities:
+                    labels.append(f'B-{e}')
+                    labels.append(f'I-{e}')
+            else:
+                labels = self.labels
+            
+            self.update_config(
+                         entities = entities,
+                         num_labels = num_labels,
+                         labels = labels
+                         )
+        
+        elif self.labels:
+            num_labels = len(self.labels)
+            if num_labels % 2 == 0:
+                assert 0,"在NER任务中，配置参数labels的长度必须是奇数，可以通过set_attribute()或者初始化传入entities,num_entities或正确的labels进行修改"
+            num_entities = num_labels//2
+            entities = [f'entity-{i}' for i in range(num_entities)]
+            self.update_config(
+                     entities = entities,
+                     num_labels = num_labels,
+                     num_entities = num_entities
+                     )
+            
+        elif self.num_labels:
+            if self.num_labels % 2 == 0:
+                assert 0,"在NER任务中，配置参数num_labels必须是奇数，可以通过set_attribute()或者初始化传入entities,num_entities或正确的num_labels进行修改"
+            num_entities = num_labels//2
+            entities = [f'entity-{i}' for i in range(num_entities)]
+            labels = ['O']
+            for e in entities:
+                labels.append(f'B-{e}')
+                labels.append(f'I-{e}')
+                
+            self.update_config(
+                         entities = entities,
+                         num_entities = num_entities,
+                         labels = labels
+                         )
+
+        else:
+            entities = ['entity']
+            num_entities = 1
+            num_labels = 3
+            labels = ['O','B','I']
+            
+            self.update_config(
+                 entities = entities,
+                num_entities = num_entities,
+                num_labels = num_labels,
+                labels = labels
+            )
+
+
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = BertCRF.from_pretrained(self.model_path,config = self.config)
-
+        if self.key_metric == 'validation loss':
+            if self.num_entities == 1:
+                self.set_attribute(key_metric = 'f1')
+            else:
+                self.set_attribute(key_metric = 'macro_f1')
+            
     def predict_per_sentence(self,text,print_result = True, save_result = True):
         tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device)
         logits = F.softmax(self.model(tokens)[0],dim=-1)
@@ -207,5 +296,5 @@ class BertNER(BertBase):
         self.result[text] = result
         
     def compute_metrics(self,eval_pred):
-        self.key_metric='f1'
-        return metrics_for_ner(eval_pred)
+        dic = metrics_for_ner(eval_pred)
+        return dic

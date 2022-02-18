@@ -581,7 +581,7 @@ def metrics_for_cls(eval_pred):
             'precision':precision(eval_pred),
             'recall':recall(eval_pred),
         }
-    elif len(LABLES) < 5:
+    elif 3 < len(LABLES) <= 5:
         report = {
             'accuracy':accuracy(eval_pred),
             'top3 accuracy':topk_accuracy(eval_pred),
