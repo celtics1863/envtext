@@ -37,26 +37,40 @@ class BertREG(BertPreTrainedModel):
 
 
 class BertSA(BertBase):
+    '''
+    Bert情感分析/回归模型
+    
+    Args:
+        path `str`: 默认：None
+            预训练模型保存路径，如果为None，则从celtics1863进行导入预训练模型
+        
+        config [Optional] `dict` :
+            配置参数
+            
+    Kwargs:
+       max_length [Optional] `int`: 默认：128
+           支持的最大文本长度。
+           如果长度超过这个文本，则截断，如果不够，则填充默认值。
+   '''
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = BertREG.from_pretrained(self.model_path)
         if self.key_metric == 'validation loss':
             self.set_attribute(key_metric = 'rmse')
         
-    def predict_per_sentence(self,text, print_result = True ,save_result = True):
-        tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device)
-        logits = self.model(tokens)[0]
+    def postprocess(self,text, logits, print_result = True ,save_result = True):
+        logits = logits.squeeze()
         if print_result:
-            self._report_per_sentence(text,logits[0].clone().detach().cpu())
+            self._report_per_sentence(text,logits)
         
         if save_result:
-            self._save_per_sentence_result(text,logits[0].clone().detach().cpu())
+            self._save_per_sentence_result(text,logits)
             
             
     def _report_per_sentence(self,text,score):
-        log = 'text:{} score: {:.4f} \n '.format(text,score.cpu().item())
+        log = 'text:{} score: {:.4f} \n '.format(text,score)
         print(log)
-        self.result[text].append(score.cpu().item())
+        self.result[text].append(score)
     
     def _save_per_sentence_result(self,text,score):
         result = {

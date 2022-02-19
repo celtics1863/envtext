@@ -72,14 +72,10 @@ class RNNMultiChoice(RNNBase):
                 self.set_attribute(key_metric = 'macro_f1')
     
 
-    def predict_per_sentence(self,text, print_result = True ,save_result = True):
-        tokens=torch.tensor(self.tokenizer.encode(text),device = self.device)
-        with torch.no_grad():
-            logits = self.model(tokens)[0]
-        logits = self.model(tokens)[0]
-        preds = torch.nonzero(logits[0] > 0.5)
+    def postprocess(self,text, logits ,print_result = True, save_result = True):
+        preds = np.nonzero(logits > 0.5)
         if print_result:
-            self._report_per_sentence(text,preds.clone().detach().cpu(),logits[0][preds].clone().detach().cpu())
+            self._report_per_sentence(text,preds,logits)
         
         if save_result:
             self._save_per_sentence_result(text,preds.clone().detach().cpu(),logits[0][preds].clone().detach().cpu())
@@ -87,19 +83,19 @@ class RNNMultiChoice(RNNBase):
     def _report_per_sentence(self,text,preds,probs):
         log = f'text: {text}\n'
         for pred,prob in zip(preds,probs) :
-            log += '\t prediction: {} \t ; probability : {:.4f}\n'.format(self.id2label[pred.item()],prob.item())
-            self.result[text].append((self.id2label[pred.item()],prob.item()))
+            log += '\t prediction: {} \t ; probability : {:.4f}\n'.format(self.id2label[pred],prob)
+            self.result[text].append((self.id2label[pred],prob))
         print(log)
  
     def _save_per_sentence_result(self,text,preds,probs):
         result = {}
         for idx,(pred,prob) in enumerate(zip(preds,probs)) :
             if idx == 0:
-                result['label'] = self.id2label[pred.item()]
-                result['p'] = prob.item()
+                result['label'] = self.id2label[pred]
+                result['p'] = prob
             else:
-                result[f'label_{idx+1}'] = self.id2label[pred.item()]
-                result[f'p_{idx+1}'] = prob.item()
+                result[f'label_{idx+1}'] = self.id2label[pred]
+                result[f'p_{idx+1}'] = prob
         
         self.result[text] = result
         

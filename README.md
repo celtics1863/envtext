@@ -195,18 +195,16 @@ class MyBertModel(BertBase):
         super().initialize_bert(path,config,**kwargs)
         self.model = MyBert.from_pretrained(self.model_path)
 
-    #重写预测函数
-    def predict_per_sentence(self,text, print_result = True ,save_result = True):
-        tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device) #获得token
-        logits = self.model(tokens)[0] #获得logits
-        
+    #[Optional] 可选 重写后处理预测结果的函数
+    def postprocess(self,text, logits, print_result = True ,save_result = True):     
+        logits = logits.squeeze()
         if print_result:
             #打印结果
-            print(logits[0].clone().detach().cpu())
+            print(logits)
         
         if save_result:
             #保存结果
-            self.result[text] = logits[0].clone().detach().cpu()
+            self.result[text] = logits
             
      #[Optional] 可选 重新计算判别值函数，用于训练时提供除loss外的metrics信息
      def compute_metrics(eval_pred)
@@ -247,27 +245,25 @@ class MyRNN(nn.Module):
 
 再将模型与envtext接口对接，
 ```python
-class MyBertModel(BertBase):
+import numpy as np
+class MyRNNModel(BertBase):
     #重写初始化函数
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs) #保持不变
-        self.model = MyBert.from_pretrained(self.model_path) 
+        self.model = MyRNN.from_pretrained(self.model_path) 
 
-    #重写预测函数
-    def predict_per_sentence(self,text, print_result = True ,save_result = True):
-        tokens=self.tokenizer.encode(text, return_tensors='pt').to(self.model.device) #获得token
-        logits = self.model(tokens)[0] #获得logits
-        preds,probs = torch.argmax(logits,dim = -1) #获得预测结果
-        
+    #[Optional] 可选 重写后处理预测结果的函数
+    def postprocess(self,text, logits, print_result = True ,save_result = True):     
+        pred = np.argmax(logits,axis = -1)
         if print_result:
             #打印结果
-            print(preds.clone().detach().cpu().numpy())
+            print(pred)
         
         if save_result:
             #保存结果
-            self.result[text] = preds.clone().detach().cpu().numpy().tolist()
+            self.result[text] = pred
             
-    #[Optional] 可选 重写metrics，增加loss以外的metric
+    #[Optional] 可选 重写metrics，增加loss以外的metric, 用于训练
     def compute_metrics(eval_pred):
         return {} #返回一个dict
         
@@ -279,6 +275,11 @@ class MyBertModel(BertBase):
 
 更详细的教程，请参见我们的案例 [jupyter notebooks]('jupyter_notebooks')
 
+### 5. 使用建议
+
+1. Bert模型比较大，如果只有cpu的情况下，建议先用RNN模型，跑出一个结果，观察数据集的数量/质量是否达标，再考虑是否用Bert模型。一般envbert模型要比RNN模型领先10个点左右，尤其在数据集越小的情况下，envbert的优势越明显。
+2. 神经网络模型受到初始化权重影响，每一次训练的情况不一样，建议多跑几次，取最好的结果。
+3. Learning rate, Epoch, Batchsize是三个最关键的超参数，需要对不同数据集小心调整。默认的参数可以在大多数情况下达到较优的值，但是一定不会达到最好的结果。
 
 # LISENCE
 Apache Lisence

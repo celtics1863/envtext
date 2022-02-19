@@ -44,9 +44,37 @@ class RNNCLS(RNNBase):
     def align_config(self):
         super().align_config()
         if self.labels:
-            self.update_config(num_labels = len(self.labels))   
+            if self.label2id:
+                label2id = self.label2id
+                id2label = {v:k for k,v in self.label2id.items()}
+            elif self.id2label:
+                label2id = {v:k for k,v in self.id2label.items()}
+                id2label = self.id2label
+            
+            self.update_config(num_labels = self.num_labels,
+                         label2id = label2id,
+                         id2label = id2label)   
         elif self.num_labels:
-            self.update_config(labels = list(range(self.num_labels)))
+            if self.label2id:
+                label2id = self.label2id
+                labels = self.label2id.keys()
+                id2label = {v:k for k,v in self.label2id.items()}
+                
+                self.update_config(labels = labels,
+                         label2id = label2id,
+                         id2label = id2label)   
+            elif self.id2labels:
+                id2label = self.id2label
+                labels = [v for k,v in self.id2labels.items()]
+                label2id = {v:k for k,v in self.id2label.items()}
+                self.update_config(labels = labels,
+                         label2id = label2id,
+                         id2label = id2label)  
+            else:
+                labels = [f'LABEL_{i}' for i in range(self.num_labels)]
+                self.update_config(num_labels = self.num_labels,
+                            labels = labels)
+        
         else:
             self.update_config(num_labels = 2,
                          labels = ['LABEL_0','LABEL_1'],
@@ -73,17 +101,15 @@ class RNNCLS(RNNBase):
                 self.set_attribute(key_metric = 'macro_f1')
     
     
-    def predict_per_sentence(self,text,topk = 3,save_result = True,print_result = True):
-        tokens=torch.tensor(self.tokenizer.encode(text),device = self.device)
-        with torch.no_grad():
-            logits = F.softmax(self.model(tokens)[0],dim=-1)
+    def postprocess(self,text,logits,topk=5,print_result = True,save_result = True):
+        logits = F.softmax(torch.tensor(logits),dim=-1)
         topk = topk if logits.shape[-1] > topk else logits.shape[-1]
         p,pred = torch.topk(logits,topk)
-        if save_result:
-            self._save_per_sentence_result(text,pred[0].clone().detach().cpu(),p[0].clone().detach().cpu())
-            
         if print_result:
-            self._report_per_sentence(text,pred[0].clone().detach().cpu(),p[0].clone().detach().cpu())
+            self._report_per_sentence(text,pred,p)
+        
+        if save_result:
+            self._save_per_sentence_result(text,pred,p)
     
     def _report_per_sentence(self,text,pred,p):
         log = f'text:{text} \n'
@@ -99,8 +125,8 @@ class RNNCLS(RNNBase):
                 result['label'] = self.id2label[i.item()]
                 result['p'] = j.item()
             else:
-                result[f'top{topk} label'] = self.id2label[i.item()]
-                result[f'top{topk} p'] = j.item()
+                result[f'top{topk+1} label'] = self.id2label[i.item()]
+                result[f'top{topk+1} p'] = j.item()
         
         self.result[text] = result
         

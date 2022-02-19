@@ -55,24 +55,23 @@ class RNNSA(RNNBase):
         if self.key_metric == 'validation loss':
             self.set_attribute(key_metric = 'rmse')
 
-    def predict_per_sentence(self,text, print_result = True ,save_result = True):
-        tokens=torch.tensor(self.tokenizer.encode(text),device = self.device)
-        with torch.no_grad():
-            logits = self.model(tokens)[0]
+    def postprocess(self,text, logits, print_result = True ,save_result = True):
+        logits = logits.squeeze()
         if print_result:
-            self._report_per_sentence(text,logits[0])
+            self._report_per_sentence(text,logits)
         
         if save_result:
-            self._save_per_sentence_result(text,logits[0])
-   
+            self._save_per_sentence_result(text,logits)
+            
+            
     def _report_per_sentence(self,text,score):
-        log = f'text:{text} score: {score.cpu().item()} \n '
+        log = 'text:{} score: {:.4f} \n '.format(text,score)
         print(log)
-        self.result[text].append(score.cpu().item())
+        self.result[text].append(score)
     
     def _save_per_sentence_result(self,text,score):
         result = {
-            'label':score
+            'label':':.4f'.format(score)
         }
         self.result[text] = result
         

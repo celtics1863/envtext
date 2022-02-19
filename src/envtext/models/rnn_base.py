@@ -33,14 +33,14 @@ class RNNBase(ModelBase):
             labels [Optional] `List[int]` or `List[str]`: 默认None
                 分类问题中标签的种类。
                 分类问题中和num_labels必须填一个，代表所有的标签。
-                如果是RNNCLS模型，默认为[0,1]
-                如果是RNNMultiChoice模型，默认为[1]
+                如果是RNNCLS模型，默认为['LABEL_0','LABEL_0']
+                如果是RNNMultiChoice模型，默认为['LABEL_0']
            
             num_labels [Optional] `int`: 默认None
                 分类问题中标签的数量。
                 分类问题中和num_labels必须填一个，代表所有的标签。
-                如果是RNNCLS模型，默认为[0,1]
-                如果是RNNMultiChoice模型，默认为[1] 
+                如果是RNNCLS模型，默认为2
+                如果是RNNMultiChoice模型，默认为1 
                 
            entities [Optional] `List[int]` or `List[str]`: 默认为None
                命名实体识别问题中实体的种类。
@@ -407,9 +407,38 @@ class RNNBase(ModelBase):
             report = {'validation loss':loss}
         return report
 
+    def _inference_per_step(self,dataloader):
+        self.model.eval()
+        bar = tqdm(dataloader)
+        bar.set_description("正在 Inference ...")
+        preds = []
+        for X in bar:
+            X = X.to(self.device)
+            with torch.no_grad():
+                predict = self.model(X)[0]
+            preds.append(predict.clone().detach().cpu().numpy())
+            
+        preds = np.concatenate(preds,axis = 0)
+        return preds
+    
     def _raw_report(self,dic):
-        for k,v in dic.items():
-            print('{}: {:.4f} \t'.format(k.capitalize(),v))
+        keys = list(dic.keys())
+        if isinstance(dic[keys[0]],list):
+            report = '\t  \t'
+            for i in range(1,len(dic[keys[0]])+1):
+                report += f'Epoch{i} \t'
+            report += '\n'
+
+            for k,values in dic.items():
+                report += f'{k}: \t'
+                for v in values:
+                    report += '{:.4f} \t'.format(v)
+                report += '\n'
+        else:
+            report = ''
+            for k,v in dic.items():
+                report += '{} \t : {:.4f} \t \n'.format(k,v)
+        print(report)
                                  
     def _ipython_report(self,dic):
         markdown = ''
@@ -422,11 +451,19 @@ class RNNBase(ModelBase):
             markdown += '---|'
         markdown += '  \n'
 
-        markdown += '|'
-        for k,v in dic.items():
-            markdown += '{:.4f}|'.format(v)
-
-        markdown += '  \n'
+        keys = list(dic.keys())
+        if isinstance(dic[keys[0]],list):
+            for values in zip(*dic.values()):
+                markdown += '|'
+                for v in values:
+                    markdown += '{:.4f}|'.format(v)
+                markdown += '|  \n'
+        else:
+            markdown += '|'
+            for k,v in dic.items():
+                markdown += '{:.4f}|'.format(v)
+            markdown += '  \n'
+            
         from IPython.display import display_markdown
         display_markdown(markdown,raw = True)
 
@@ -437,21 +474,33 @@ class RNNBase(ModelBase):
             self._raw_report(dic)
     
     
-    def test(self,my_datasets = None):
+    def inference(self, texts = None, batch_size = 2):
         '''
-        my_datasets (`dict`): 数据集
-            格式为: {'test':{'text':[]}}
+        推理数据集，更快的速度，更小的cpu依赖，建议大规模文本推理时使用。
+        与self.predict() 的区别是会将数据打包为batch，并使用gpu进行预测，最后再使用self.postprocess()进行后处理，保存结果至self.result
+        
+        texts (`List[str]`): 数据集
+            格式为列表
+            
         '''
+        texts = self._align_input_texts(texts)
+        
         #模型
         self.model = self.model.to(self.device)
         
         #准备数据集
-        if my_datasets is None:
-            my_datasets = self.datasets
+        input_ids = self._tokenizer_for_training(texts,des = "推理 Tokenizing 进度")
+        dataset = TensorDataset(input_ids)
+        data_loader = DataLoader(dataset,batch_size = batch_size, shuffle = False,drop_last = False)
         
-        #清空results
-        self.results = defaultdict(list)
-        self.predict(my_datasets['test']['text'],print_result=False,save_result = True)
+        #推理
+        preds = self._inference_per_step(data_loader)
+        
+        #保存results获得
+        bar = tqdm(zip(texts,preds))
+        bar.set_description('正在后处理...')
+        for text,pred in bar:
+            self.postprocess(text,pred,print_result = False,save_result = True)
         
         
     def train(self,my_datasets = None, epoch = 3 ,batch_size = 2 , learning_rate = 1e-3 ,save_path = None ,checkpoint_path = None,**kwargs):

@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: envtext
-Version: 0.0.6
+Version: 0.0.9
 Summary: envtext for Chinese texts analysis in Environment domain
 Home-page: https://github.com/celtics1863/envtext
 Author: Bi Huaibin
@@ -221,18 +221,16 @@ class MyBertModel(BertBase):
         super().initialize_bert(path,config,**kwargs)
         self.model = MyBert.from_pretrained(self.model_path)
 
-    #重写预测函数
-    def predict_per_sentence(self,text, print_result = True ,save_result = True):
-        tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device) #获得token
-        logits = self.model(tokens)[0] #获得logits
-        
+    #[Optional] 可选 重写后处理预测结果的函数
+    def postprocess(self,text, logits, print_result = True ,save_result = True):     
+        logits = logits.squeeze()
         if print_result:
             #打印结果
-            print(logits[0].clone().detach().cpu())
+            print(logits)
         
         if save_result:
             #保存结果
-            self.result[text] = logits[0].clone().detach().cpu()
+            self.result[text] = logits
             
      #[Optional] 可选 重新计算判别值函数，用于训练时提供除loss外的metrics信息
      def compute_metrics(eval_pred)
@@ -273,27 +271,25 @@ class MyRNN(nn.Module):
 
 再将模型与envtext接口对接，
 ```python
-class MyBertModel(BertBase):
+import numpy as np
+class MyRNNModel(BertBase):
     #重写初始化函数
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs) #保持不变
-        self.model = MyBert.from_pretrained(self.model_path) 
+        self.model = MyRNN.from_pretrained(self.model_path) 
 
-    #重写预测函数
-    def predict_per_sentence(self,text, print_result = True ,save_result = True):
-        tokens=self.tokenizer.encode(text, return_tensors='pt').to(self.model.device) #获得token
-        logits = self.model(tokens)[0] #获得logits
-        preds,probs = torch.argmax(logits,dim = -1) #获得预测结果
-        
+    #[Optional] 可选 重写后处理预测结果的函数
+    def postprocess(self,text, logits, print_result = True ,save_result = True):     
+        pred = np.argmax(logits,axis = -1)
         if print_result:
             #打印结果
-            print(preds.clone().detach().cpu().numpy())
+            print(pred)
         
         if save_result:
             #保存结果
-            self.result[text] = preds.clone().detach().cpu().numpy().tolist()
+            self.result[text] = pred
             
-    #[Optional] 可选 重写metrics，增加loss以外的metric
+    #[Optional] 可选 重写metrics，增加loss以外的metric, 用于训练
     def compute_metrics(eval_pred):
         return {} #返回一个dict
         

@@ -7,13 +7,27 @@ from queue import PriorityQueue as PQ
 import math #for math.log()
 
 class BertMLM(BertBase):
+    '''
+    Bert完型填空模型，支持多个[MASK]
+    
+    Args:
+        path `str`: 默认：None
+            预训练模型保存路径，如果为None，则从celtics1863进行导入预训练模型
+            
+       config [Optional] `dict` :
+            配置参数
+   Kwargs:
+       
+        max_length [Optional] `int`: 默认：512
+           支持的最大文本长度。
+           如果长度超过这个文本，则截断，如果不够，则填充默认值。
+    '''
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = BertForMaskedLM.from_pretrained(self.model_path,config = self.config)
-    
+
     def predict_per_sentence(self,text,topk = 5,print_result = True,save_result = True):
-        
-        tokens = self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True)[0]
+        tokens=self.tokenizer.encode(text, max_length = self.max_length, return_tensors='pt',add_special_tokens=True,truncation = True)[0].to(self.model.device)
         # print(mask_input_ids)
         mask_inds = self._get_mask_id(tokens)
         if len(mask_inds) == 1:

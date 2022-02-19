@@ -1,5 +1,5 @@
 from threading import Thread
-from collections import defaultdict
+from collections import defaultdict,OrderedDict
 from transformers.configuration_utils import PretrainedConfig
 import torch #for torch.cuda.is_available
 from ..data.utils import load_dataset
@@ -19,7 +19,7 @@ class ModelBase:
         self.data_config = None
         self.args = None
         self.trainer = None
-        self.result = defaultdict(dict)
+        self.result = OrderedDict()
         
         self.training_results = defaultdict(list)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -58,8 +58,8 @@ class ModelBase:
         设置模型运行的设备，cpu或cuda等
         '''
         self.device = device
-        self.model.to(device)
-        
+        self.model = self.model.to(device)
+    
     def save_result(self,save_path,sep = ' '):
         '''
         保存结果
@@ -96,7 +96,7 @@ class ModelBase:
         '''
         import pandas as pd
         df = pd.DataFrame(self.result).transpose()
-        df.to_csv(path,index = True)
+        df.to_csv(path,index = True,encoding="utf_8_sig")
 
     def _save_result2excel(self,path):
         '''
@@ -135,9 +135,9 @@ class ModelBase:
             os.makedirs(os.path.realpath(save_path))
         
         if hasattr(self.model,'save_pretrained'):
-            self.model.save_pretrained(path)
+            self.model.save_pretrained(save_path)
         else:
-            torch.save(self._best_model,os.path.join(save_path,'pytorch_model.bin'))
+            torch.save(self.model,os.path.join(save_path,'pytorch_model.bin'))
             if self.config:
                 self.config.save_pretrain(save_path)
 
@@ -172,9 +172,24 @@ class ModelBase:
         '''
         预测多个句子
         Args:
-         text_list `List[str]`:
-             文本的列表
+           text_list `List[str]`:
+               文本的列表
+       
+        Kwargs:
+           topk [Optional] `int`： 默认为5
+               报告预测概率前topk的结果。
+           
+           print_result [Optional] `bool`: 默认为True
+               是否打印结果，对于大批量的文本，建议设置为False
+               
+           save_result: [Optional] `bool`: 默认为True
+               是否保存结果
         '''
+        #保持顺序
+        if 'save_result' in kwargs and kwargs['save_result']:
+            for t in text_list:
+                self.result[t] = dict()
+
         thread_list = []
         for text in text_list:
             thread_list.append(Thread(target = self.predict_per_sentence,args=(text,),kwargs=kwargs))
@@ -184,6 +199,24 @@ class ModelBase:
 
         for thread in thread_list:
             thread.join()
+    
+    def _align_input_texts(self,texts):
+        if isinstance(texts,str):
+            texts = [texts]
+        elif isinstance(texts,list):
+            pass
+        elif isinstance(texts,tuple):
+            texts = [t for t in texts]  
+        else:
+            import pandas as pd
+            if isinstance(texts,pd.Series):
+                texts = texts.apply(str).values.tolist()
+            elif isinstance(texts,pd.DataFrame):
+                texts = list(map(str,texts.index.to_list()))
+            else:
+                assert 0,'文本格式不支持，请输入 str, List[str], Tuple(str), pandas.Series ,pandas.DataFrame等格式的文本'
+        
+        return texts
     
     def predict(self,texts,**kwargs):
         '''
@@ -205,14 +238,8 @@ class ModelBase:
                默认为True
                是否保存结果
        '''
-        if isinstance(texts,str):
-            texts = [texts]
-        elif isinstance(texts,list):
-            pass
-        elif isinstance(texts,tuple):
-            texts = [t for t in texts]  
-        else:
-            raise NotImplemented
+
+        texts = self._align_input_texts(texts)
         
         thread_list = []
         for text in texts:
@@ -238,10 +265,9 @@ class ModelBase:
        
        return: `dict` 
         '''
-        self.key_metric = 'validation loss'
         return {}
     
-    def predcit_per_sentence(self,text, **kwargs):
+    def postprocess(self, text ,logits, **kwargs):
         '''
         需要继承之后重新实现
         如果选择保存结果，结果保存在self.result里：
@@ -250,6 +276,59 @@ class ModelBase:
                 'label':预测的结果,
                 }
                 
+        Args:
+           text `str` :
+                预测的文本
+           logits `numpy.ndarray`
+                模型输出的结果 logits
+                
+        Kwargs:
+           topk [Optional] `int`： 默认为5
+               报告预测概率前topk的结果。
+           
+           print_result [Optional] `bool`: 默认为True
+               是否打印结果，对于大批量的文本，建议设置为False
+               
+           save_result: [Optional] `bool`: 默认为True
+               是否保存结果
+        '''
+        if print_result:
+            print('texts: {} ,预测结果是 {}'.format(text,logits.tolist()))
+        
+        if save_result:
+            self.result['text'] = {
+                'logits': logits.tolist()
+            }
+    
+    def get_logits(self,text,return_numpy = True):
+        '''
+        获得模型预测一句话的logits
+        
+        Args:
+            text `str`: 文本
+            
+        Kwargs:
+            return_numpy `bool`:是否返回numpy数据
+            
+        '''
+        tokens=self.tokenizer.encode(text, max_length = self.max_length, return_tensors='pt',add_special_tokens=True,truncation = True).to(self.model.device)
+        #模型推理
+        with torch.no_grad():
+            logits = self.model(tokens)
+            
+        if isinstance(logits,dict) and 'logits' in logits.keys():
+            logits = logits['logits']
+        else:
+            logits = logits[0]
+        
+        if return_numpy:
+            return logits.clone().detach().cpu().numpy()
+        else:
+            return logits.clone().detach().cpu()
+        
+    def predict_per_sentence(self,text, **kwargs):
+        '''
+        预测一个句子
         Args:
            text `str`
         
@@ -263,7 +342,8 @@ class ModelBase:
            save_result: [Optional] `bool`: 默认为True
                是否保存结果
         '''
-        pass
+        logits = self.get_logits(text,return_numpy = True)[0]
+        result = self.postprocess(text,logits)
   
     def train(self,my_datasets,epoch ,batch_size , learning_rate ,save_path ,checkpoint_path,**kwargs):
         '''
@@ -276,7 +356,7 @@ class ModelBase:
 #                        sep = ' ',dataset = 'dataset',train = 'train',valid = 'valid' ,test = 'test', text = 'text', label = 'label'):
     def load_dataset(self,*args,**kwargs):
         '''
-        读取数据集。
+        读取训练数据集。
           参见 envText.data.utils.load_dataset
         
         Args:
@@ -426,11 +506,16 @@ class ModelBase:
                   |text3| label3| test  |
         '''
         try:
-#             self.datasets,self.data_config = load_dataset(path,task,format,split,label_as_key,sep,dataset,train,valid,test,text,label)
             self.datasets,self.data_config = load_dataset(*args,**kwargs)
 
             print("*"*7,"读取数据集成功","*"*7)
         except Exception as e:
             print("*"*7,"读取数据集失败","*"*7)
             
-#         return self.datasets,self.data_config
+
+#     def load_inference_dataset(self,*args,**kwargs):
+#         try:
+#             self.datasets,self.data_config = load_train_dataset(*args,**kwargs)
+#             print("*"*7,"读取数据集成功","*"*7)
+#         except Exception as e:
+#             print("*"*7,"读取数据集失败","*"*7)

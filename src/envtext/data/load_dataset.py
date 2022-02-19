@@ -4,7 +4,7 @@ from ..utils.txt_ops import txt_generator
 import random #for random.random()
 import pandas as pd #for pd.read_csv() pd.read_excel()
 import numpy as np #for np.isnan()
-from .load_dataset_base import LoadDataset
+from .load_train_dataset import LoadDataset
 
 
 class LoadJson(LoadDataset):

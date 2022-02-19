@@ -38,6 +38,30 @@ class BertMultiCLS(BertPreTrainedModel):
 
 
 class BertMultiChoice(BertBase):
+    '''
+    Bert多项选择模型
+    
+    Args:
+        path `str`: 默认：None
+            预训练模型保存路径，如果为None，则从celtics1863进行导入预训练模型
+            
+        config [Optional] `dict` :
+            配置参数
+   Kwargs:
+        labels [Optional] `List[int]` or `List[str]`: 默认None
+            分类问题中标签的种类。
+            分类问题中和num_labels必须填一个，代表所有的标签。
+            默认为['LABEL_0']
+
+        num_labels [Optional] `int`: 默认None
+            分类问题中标签的数量。
+            分类问题中和num_labels必须填一个，代表所有的标签。
+            默认为1
+       
+        max_length [Optional] `int`: 默认：512
+           支持的最大文本长度。
+           如果长度超过这个文本，则截断，如果不够，则填充默认值。
+    '''
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = BertMultiCLS.from_pretrained(self.model_path,config = self.config)
@@ -60,12 +84,10 @@ class BertMultiChoice(BertBase):
                          label2id = {'LABEL_0':0},
                          )
             
-    def predict_per_sentence(self,text,print_result = True, save_result = True):
-        tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device)
-        logits = self.model(tokens)[0]
-        preds = torch.nonzero(logits[0] > 0.5)
+    def postprocess(self,text, logits ,print_result = True, save_result = True):
+        preds = np.nonzero(logits > 0.5)
         if print_result:
-            self._report_per_sentence(text,preds.clone().detach().cpu(),logits[0][preds].clone().detach().cpu())
+            self._report_per_sentence(text,preds,logits)
         
         if save_result:
             self._save_per_sentence_result(text,preds.clone().detach().cpu(),logits[0][preds].clone().detach().cpu())
@@ -73,19 +95,19 @@ class BertMultiChoice(BertBase):
     def _report_per_sentence(self,text,preds,probs):
         log = f'text: {text}\n'
         for pred,prob in zip(preds,probs) :
-            log += '\t prediction: {} \t ; probability : {:.4f}\n'.format(self.id2label[pred.item()],prob.item())
-            self.result[text].append((self.id2label[pred.item()],prob.item()))
+            log += '\t prediction: {} \t ; probability : {:.4f}\n'.format(self.id2label[pred],prob)
+            self.result[text].append((self.id2label[pred],prob))
         print(log)
  
     def _save_per_sentence_result(self,text,preds,probs):
         result = {}
         for idx,(pred,prob) in enumerate(zip(preds,probs)) :
             if idx == 0:
-                result['label'] = self.id2label[pred.item()]
-                result['p'] = prob.item()
+                result['label'] = self.id2label[pred]
+                result['p'] = prob
             else:
-                result[f'label_{idx+1}'] = self.id2label[pred.item()]
-                result[f'p_{idx+1}'] = prob.item()
+                result[f'label_{idx+1}'] = self.id2label[pred]
+                result[f'p_{idx+1}'] = prob
         
         self.result[text] = result
         

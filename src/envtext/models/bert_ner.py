@@ -111,13 +111,30 @@ class BertNER(BertBase):
            配置参数
    
    Kwargs:
-       num_entities [Optional] `int`:
-           实体类别（注意是实体类别，不是转换为标签后（B、I、O）的类别数量
-           num_entities 和 num_labels只需要设置一个即可
+       entities [Optional] `List[int]` or `List[str]`: 默认为None
+           命名实体识别问题中实体的种类。
+           命名实体识别问题中与labels/num_labels/num_entities必填一个。
+           实体使用BIO标注，如果n个实体，则有2*n+1个label。
+           eg:
+               O: 不是实体
+               B-entity1：entity1的实体开头
+               I-entity1：entity1的实体中间
+               B-entity2：entity2的实体开头
+               I-entity2：entity2的实体中间
+
+       num_entities [Optional] `int`: 默认None
+           命名实体识别问题中实体的数量。
+           命名实体识别问题中与labels/num_labels/entities必填一个。
+           实体使用BIO标注，如果n个实体，则有2*n+1个label。
    
        num_labels [Optional]`int`:
            默认:3
            标签类别
+       
+       labels [Optional] `List[int]` or `List[str]`: 默认None
+            NER问题中标签的种类。
+            分类问题中和num_labels必须填一个，代表所有的标签。
+            默认为['O','B','I']
        
        crf  [Optional] `bool`:
            默认:True
@@ -126,6 +143,10 @@ class BertNER(BertBase):
        lstm [Optional] `int`:
            默认:1
            是否使用lstm
+        
+       max_length [Optional] `int`: 默认：512
+           支持的最大文本长度。
+           如果长度超过这个文本，则截断，如果不够，则填充默认值。
     '''
     def align_config(self):
         super().align_config()
@@ -220,16 +241,16 @@ class BertNER(BertBase):
             else:
                 self.set_attribute(key_metric = 'macro_f1')
             
-    def predict_per_sentence(self,text,print_result = True, save_result = True):
-        tokens=self.tokenizer.encode(text, return_tensors='pt',add_special_tokens=True).to(self.model.device)
-        logits = F.softmax(self.model(tokens)[0],dim=-1)
+    def postprocess(self,text,logits,print_result = True, save_result = True):
+        logits = torch.tensor(logits)
+        logits = F.softmax(logits,dim=-1)
         pred = torch.argmax(logits,dim=-1)
         
         if print_result:
-            self._report_per_sentence(text,pred[0].clone().detach().cpu(),logits[0].clone().detach().cpu())
+            self._report_per_sentence(text,pred,logits)
         
         if save_result:
-            self._save_per_sentence_result(text,pred[0].clone().detach().cpu(),logits[0].clone().detach().cpu())
+            self._save_per_sentence_result(text,pred,logits)
             
     def _report_per_sentence(self,text,pred,p):
         text = text.replace(' ','')

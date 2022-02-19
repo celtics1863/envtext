@@ -35,7 +35,7 @@ def _unify_task(task):
 def load_dataset(path,task = None,format = None , sampler = 1 ,split=0.5,label_as_key = False,
                        sep = ' ',dataset = 'dataset',train = 'train',valid = 'valid' ,test = 'test', text = 'text', label = 'label'):
     '''
-    读取数据集的通用接口，用来处理各种输入。
+    读取训练数据集的通用接口，用来处理各种输入。
     format = 'json'
        适用于如下类型的数据格式：
             {'train':{'text':[],  'label':[] },...}

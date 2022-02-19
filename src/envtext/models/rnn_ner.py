@@ -153,17 +153,16 @@ class RNNNER(RNNBase):
             )
         
             
-    def predict_per_sentence(self,text, print_result = True ,save_result = True):
-        tokens=torch.tensor(self.tokenizer.encode(text),device = self.device)
-        with torch.no_grad():
-            logits = F.softmax(self.model(tokens)[0],dim=-1)
+    def postprocess(self,text,logits,print_result = True, save_result = True):
+        logits = torch.tensor(logits)
+        logits = F.softmax(logits,dim=-1)
         pred = torch.argmax(logits,dim=-1)
         
         if print_result:
-            self._report_per_sentence(text,pred[0].clone().detach().cpu(),logits[0].clone().detach().cpu())
+            self._report_per_sentence(text,pred,logits)
         
         if save_result:
-            self._save_per_sentence_result(text,pred[0].clone().detach().cpu(),logits[0].clone().detach().cpu())
+            self._save_per_sentence_result(text,pred,logits)
             
     def _report_per_sentence(self,text,pred,p):
         text = text.replace(' ','')

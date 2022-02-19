@@ -2,7 +2,9 @@ from .model_base import ModelBase
 from transformers import TrainingArguments, Trainer ,BertTokenizerFast, BertConfig
 from datasets import Dataset
 import torch
-import os #for os.
+import os 
+from tqdm import tqdm
+import numpy as np #for np.concatnate
 
 class BertBase(ModelBase):
     def __init__(self,path,config = None,**kwargs):
@@ -12,7 +14,7 @@ class BertBase(ModelBase):
         self.update_config(kwargs)
         self.update_config(config)
         self.initialize_bert(path)
-        self.set_attribute(key_metric = 'loss')
+        self.set_attribute(key_metric = 'loss',max_length = 512)
         
         
     def initialize_tokenizer(self,path):
@@ -34,7 +36,7 @@ class BertBase(ModelBase):
             config = BertConfig.from_pretrained(path)
         else:
             config = BertConfig()
-        config.update(self.config.to_dict())
+        config.update(self.config.to_diff_dict())
         self.config = config
     
     def align_config(self):
@@ -61,7 +63,7 @@ class BertBase(ModelBase):
         
         if config is not None:
             self.update_config(config)
-            
+        
         self.update_config(kwargs)
         
         self.align_config()
@@ -166,26 +168,59 @@ class BertBase(ModelBase):
         获得验证集metrics报告
         '''
         raise NotImplemented
+        
+        
+    def _tokenizer_for_inference(self,texts,des):
+        bar = tqdm(texts)
+        bar.set_description(des)
+        tokens = []
+        for text in bar:
+            tokens.append(self.tokenizer.encode(text,max_length = self.max_length,padding='max_length',truncation=True))
+        tokens = torch.tensor(tokens)
+        return tokens
+
+    def _inference_per_step(self,dataloader):
+        self.model.eval()
+        bar = tqdm(dataloader)
+        bar.set_description("正在 Inference ...")
+        preds = []
+        for X in bar:
+            X = X[0].to(self.device)
+            with torch.no_grad():
+                predict = self.model(X)[0]
+            preds.append(predict.clone().detach().cpu().numpy())
+            
+        preds = np.concatenate(preds,axis = 0)
+        return preds
     
-    def set_optim(self,optim):
+    def inference(self, texts = None, batch_size = 2):
         '''
-        设置优化器，需要是torch.optim，默认是Adam优化器，learning rate在训练时传入
-        '''
-        raise NotImplemented
+        推理数据集，更快的速度，更小的cpu依赖，建议大规模文本推理时使用。
+        与self.predict() 的区别是会将数据打包为batch，并使用gpu(如有)进行预测，最后再使用self.postprocess()进行后处理，保存结果至self.result
         
-    def set_learing_rate_schedule(self,schedule):
-        '''
-        设置学习率迭代方法，默认是torch.optim.lr_scheduler.CosineAnnealingLR
-        '''
-        raise NotImplemented
-    
-    def load_checkpoint(self,path):
-        '''
-        从checkpoint导入模型，但是必须要重新设置
-        '''
-        raise NotImplemented
+        texts (`List[str]`): 数据集
+            格式为列表
+        '''        
+        texts = self._align_input_texts(texts)
         
+        #模型
+        self.model = self.model.to(self.device)
         
+        #准备数据集
+        from torch.utils.data import TensorDataset,DataLoader
+        tokens = self._tokenizer_for_inference(texts,des = "正在Tokenizing...")
+        dataset = TensorDataset(tokens)
+        dataloader = DataLoader(dataset,batch_size = batch_size, shuffle = False,drop_last = False)
+        
+        #推理
+        preds = self._inference_per_step(dataloader)
+        
+        #保存results获得
+        bar = tqdm(zip(texts,preds))
+        bar.set_description('正在后处理...')
+        for text,pred in bar:
+            self.postprocess(text,pred,print_result = False,save_result = True)
+            
     def _tokenizer_for_training(self,dataset):
         res = self.tokenizer(dataset['text'],max_length = self.max_length,padding='max_length',truncation=True)
         return res

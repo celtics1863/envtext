@@ -56,7 +56,7 @@ class Word2VecTokenizer:
         return vectors
     
     
-    def encode(self,texts, return_tensors = None):
+    def encode(self,texts, return_tensors = None,**kwargs):
         if isinstance(texts,str):
             tokens = [self._encode_per_sentence(texts)]
         elif isinstance(texts,list):
@@ -120,7 +120,7 @@ class Word2VecTokenizer:
     def distance(self,wordA,wordB):
         return self.word2vec.wv.distance(wordA,wordB)
                 
-    def __call__(self,texts,return_tensors = None):
-        return self.encode(texts,return_tensors)
+    def __call__(self,texts,return_tensors = None,**kwargs):
+        return self.encode(texts,return_tensors,**kwargs)
             
             
