@@ -34,7 +34,7 @@ class BertCRF(BertPreTrainedModel):
                 input_size=config.hidden_size,  # 768
                 hidden_size=config.hidden_size,  # 512
                 batch_first=True,
-                num_layers=self.lstm,
+                num_layers=int(self.lstm),
                 dropout=0,  # 0.5
                 bidirectional=True
                 )
@@ -70,7 +70,7 @@ class BertCRF(BertPreTrainedModel):
         sequence_output = outputs[0][:,1:-1,:]
         
         if self.lstm:
-            lstm_output, _ = self.bilstm(padded_sequence_output)
+            lstm_output, _ = self.bilstm(sequence_output)
             ## 得到判别值
             logits = self.classifier(lstm_output)
         else:
@@ -141,8 +141,8 @@ class BertNER(BertBase):
            是否使用条件随机场
            
        lstm [Optional] `int`:
-           默认:1
-           是否使用lstm
+           默认:1,代表LSTM的层数为1
+           是否使用lstm，设置为0，或None，或False不使用LSTM
         
        max_length [Optional] `int`: 默认：512
            支持的最大文本长度。
@@ -202,7 +202,7 @@ class BertNER(BertBase):
                      num_entities = num_entities
                      )
             
-        elif self.num_labels:
+        elif self.num_labels > 2:
             if self.num_labels % 2 == 0:
                 assert 0,"在NER任务中，配置参数num_labels必须是奇数，可以通过set_attribute()或者初始化传入entities,num_entities或正确的num_labels进行修改"
             num_entities = num_labels//2

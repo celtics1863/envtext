@@ -301,6 +301,11 @@ class MyRNNModel(BertBase):
 
 更详细的教程，请参见我们的案例 [jupyter notebooks]('jupyter_notebooks')
 
+### 5. 使用建议
+
+1. Bert模型比较大，如果只有cpu的情况下，建议先用RNN模型，跑出一个结果，观察数据集的数量/质量是否达标，再考虑是否用Bert模型。一般envbert模型要比RNN模型领先10个点左右，尤其在数据集越小的情况下，envbert的优势越明显。
+2. 神经网络模型受到初始化权重影响，每一次训练的情况不一样，建议多跑几次，取最好的结果。
+3. Learning rate, Epoch, Batchsize是三个最关键的超参数，需要对不同数据集小心调整。默认的参数可以在大多数情况下达到较优的值，但是一定不会达到最好的结果。
 
 # LISENCE
 Apache Lisence

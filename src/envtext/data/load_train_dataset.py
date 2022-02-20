@@ -309,9 +309,10 @@ def generate_keyword_datasets(js,train,valid,test,text,label,sep):
 
     #数据集参数
     config = {
-           'labels':['keyword'],
-           'label2id':{'O':0,'I':1,'B':2},
-           'id2label':{0:'O',1:'I',2:'B'},
+           'entities':['keyword'],
+           'labels':['O','B','I'],
+           'label2id':{'O':0,'B':1,'I':2},
+           'id2label':{0:'O',1:'B',2:'I'},
            'counter':counter,
            'hist': hist,
            'Avg. Length':AvgL
