@@ -114,13 +114,17 @@ model.most_similar('环境保护')
 
 ### 3. 训练
 
+##### 3.1 Bert训练
 
 ```python
 #导入分类模型(classification)
 from envtext.models import BertCLS
 model = BertCLS('celtics1863/env-bert-chinese')
 
-model.load_dataset('数据集位置',task = 'cls',format = '数据集格式')
+# # 使用自定义数据集
+# model.load_dataset('数据集位置',task = 'cls',format = '数据集格式')
+# #使用自带的二分类数据集：
+model.load_dataset('isclimate')
 
 #模型训练
 model.train()
@@ -137,7 +141,11 @@ model.save_model('classification') #输入待保存的文件夹
 from envtext.models import BertCLS
 from envtext.data.utils import load_dataset
 
-datasets,config = load_dataset('数据集位置',task = 'cls',format = '数据集格式')
+# # 使用自定义数据集
+# datasets,config = load_dataset('数据集位置',task = 'cls',format = '数据集格式')
+# #使用自带的二分类数据集：
+datasets,config = load_dataset('isclimate')
+
 model = BertCLS('celtics1863/env-bert-chinese',config)
 
 #模型训练
@@ -146,6 +154,47 @@ model.train(datasets)
 #模型保存
 model.save_model('classification') #输入待保存的文件夹
 ```
+
+##### 3.2 RNN训练
+
+```python
+#导入分类模型(classification)
+from envtext.models import RNNCLS
+model = RNNCLS()
+
+# # 使用自定义数据集
+# model.load_dataset('数据集位置',task = 'cls',format = '数据集格式')
+# # 使用自带的二分类数据集：
+model.load_dataset('isclimate')
+
+#模型训练
+model.train()
+
+
+#模型保存
+model.save_model('classification') #输入待保存的文件夹
+```
+或者
+
+```python
+#导入分类模型(classification)
+from envtext.models import RNNCLS
+from envtext.data.utils import load_dataset
+
+# # 使用自定义数据集
+# datasets,config = load_dataset('数据集位置',task = 'cls',format = '数据集格式')
+# #使用自带的二分类数据集：
+datasets,config = load_dataset('isclimate')
+
+model = RNNCLS(config=config)
+
+#模型训练
+model.train(datasets)
+
+#模型保存
+model.save_model('classification') #输入待保存的文件夹
+```
+
 
 ### 4. 自定义模型
 
