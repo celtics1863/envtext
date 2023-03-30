@@ -35,12 +35,14 @@ src/envtext/models/rnn_multichoice.py
 src/envtext/models/rnn_ner.py
 src/envtext/models/rnn_sa.py
 src/envtext/models/word2vec.py
+src/envtext/models/__pycache__/word2vec.cpython-38.pyc
 src/envtext/models/__pycache__/word2vec.cpython-39.pyc
 src/envtext/tokenizers/__init__.py
 src/envtext/tokenizers/onehot_tokenizer.py
 src/envtext/tokenizers/wobert_tokenizer.py
 src/envtext/tokenizers/wobert_tokenizer_fast.py
 src/envtext/tokenizers/word2vec_tokenizer.py
+src/envtext/tokenizers/__pycache__/word2vec_tokenizer.cpython-38.pyc
 src/envtext/tokenizers/__pycache__/word2vec_tokenizer.cpython-39.pyc
 src/envtext/utils/__init__.py
 src/envtext/utils/chinese.py

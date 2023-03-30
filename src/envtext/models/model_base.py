@@ -12,7 +12,7 @@ class ModelBase:
             package = 'envtext',
             liscence = 'Apache Lisence',
             contact = 'bi.huaibin@foxmail.com',
-            max_length = 512,
+            max_length = 510,
         )
         self.tokenizer = None
         self.datasets = None

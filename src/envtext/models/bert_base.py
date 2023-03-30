@@ -14,7 +14,7 @@ class BertBase(ModelBase):
         self.update_config(kwargs)
         self.update_config(config)
         self.initialize_bert(path)
-        self.set_attribute(key_metric = 'loss',max_length = 512)
+        self.set_attribute(key_metric = 'loss',max_length = 510)
         
         
     def initialize_tokenizer(self,path):
@@ -35,7 +35,12 @@ class BertBase(ModelBase):
         if os.path.exists(os.path.join(path,'config.json')):
             config = BertConfig.from_pretrained(path)
         else:
-            config = BertConfig()
+            try:
+                #从互联网上下载config
+                config = BertConfig.from_pretrained(path)
+            except:
+                config = BertConfig()
+
         config.update(self.config.to_diff_dict())
         self.config = config
     
