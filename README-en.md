@@ -127,7 +127,7 @@ With envtext, you can label some samples, train your model, and further use the 
 
 Currently Supported Model：
 
-| Taskname | Bert models |Albert models | RNNs模型 | Others |
+| Taskname | Bert models |Albert models | RNNs models | Others |
 | ------ | ------ | ------ | ------ | ----- | 
 | Filling Mask | BertMLM  | ------  |  ------  | ----- |
 | classification   | BertCLS | AlbertCLS |   RNNCLS  |  ------  |
