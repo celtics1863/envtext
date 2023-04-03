@@ -8,9 +8,8 @@ import random #for random.random()
 from transformers import BertTokenizer
 from ..utils.chinese import _is_chinese_char,_is_whitespace,_is_control,_is_punctuation
 
-from ..files import FileConfig
+from ..files import Config
 
-config = FileConfig()
 
 VOCAB_FILES_NAMES = {"vocab_file": "vocab.txt"}
 
@@ -18,7 +17,7 @@ PRETRAINED_VOCAB_FILES_MAP = {
     "vocab_file": {
         "WoEnvBert":"/root/bert/models/mix_env_model/vocab.txt",
     },
-    "jieba_vocab_file":config.env_vocab
+    "jieba_vocab_file":Config.env_vocab
 }
 
 PRETRAINED_POSITIONAL_EMBEDDINGS_SIZES = {

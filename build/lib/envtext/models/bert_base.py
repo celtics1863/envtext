@@ -1,26 +1,35 @@
 from .model_base import ModelBase
 from transformers import TrainingArguments, Trainer ,BertTokenizerFast, BertConfig
+
+# from ..tokenizers import WoBertTokenizer
 from datasets import Dataset
 import torch
 import os 
 from tqdm import tqdm
 import numpy as np #for np.concatnate
+import random
 
 class BertBase(ModelBase):
     def __init__(self,path,config = None,**kwargs):
         super().__init__()
-        self.initialize_tokenizer(path)
         self.initialize_config(path)
         self.update_config(kwargs)
         self.update_config(config)
+        self.initialize_tokenizer(path)
         self.initialize_bert(path)
-        self.set_attribute(key_metric = 'loss',max_length = 510)
-        
-        
+        if 'max_length' not in kwargs:
+            self.set_attribute(max_length = 512)
+            
+        if 'key_metric' not in kwargs:
+            self.set_attribute(key_metric = 'loss')
+            
     def initialize_tokenizer(self,path):
         '''
         初始化tokenizer
         '''
+        if hasattr(self.config,'wo_bert'):
+            self.tokenizer = WoBertTokenizer.from_pretrained(path)  
+        
         try:
             self.tokenizer = BertTokenizerFast.from_pretrained(path)  
         except:
@@ -36,11 +45,10 @@ class BertBase(ModelBase):
             config = BertConfig.from_pretrained(path)
         else:
             try:
-                #从互联网上下载config
                 config = BertConfig.from_pretrained(path)
             except:
                 config = BertConfig()
-
+                
         config.update(self.config.to_diff_dict())
         self.config = config
     
@@ -180,10 +188,11 @@ class BertBase(ModelBase):
         bar.set_description(des)
         tokens = []
         for text in bar:
-            tokens.append(self.tokenizer.encode(text,max_length = self.max_length,padding='max_length',truncation=True))
+            tokens.append(self.tokenizer.encode(text,max_length = self.max_length,add_special_tokens=True,padding='max_length',truncation=True))
         tokens = torch.tensor(tokens)
         return tokens
 
+    @torch.no_grad()
     def _inference_per_step(self,dataloader):
         self.model.eval()
         bar = tqdm(dataloader)
@@ -191,14 +200,13 @@ class BertBase(ModelBase):
         preds = []
         for X in bar:
             X = X[0].to(self.device)
-            with torch.no_grad():
-                predict = self.model(X)[0]
+            predict = self.model(X)[0]
             preds.append(predict.clone().detach().cpu().numpy())
             
         preds = np.concatenate(preds,axis = 0)
         return preds
     
-    def inference(self, texts = None, batch_size = 2):
+    def inference(self, texts = None, batch_size = 2, save_result = True ,**kwargs):
         '''
         推理数据集，更快的速度，更小的cpu依赖，建议大规模文本推理时使用。
         与self.predict() 的区别是会将数据打包为batch，并使用gpu(如有)进行预测，最后再使用self.postprocess()进行后处理，保存结果至self.result
@@ -211,6 +219,9 @@ class BertBase(ModelBase):
         #模型
         self.model = self.model.to(self.device)
         
+        #预处理
+        texts = [self.preprocess(text) for text in texts]
+        
         #准备数据集
         from torch.utils.data import TensorDataset,DataLoader
         tokens = self._tokenizer_for_inference(texts,des = "正在Tokenizing...")
@@ -221,16 +232,24 @@ class BertBase(ModelBase):
         preds = self._inference_per_step(dataloader)
         
         #保存results获得
-        bar = tqdm(zip(texts,preds))
-        bar.set_description('正在后处理...')
-        for text,pred in bar:
-            self.postprocess(text,pred,print_result = False,save_result = True)
+        results = []
+        for text,pred in tqdm(zip(texts,preds),desc="正在后处理..."):
+            results.append(self.postprocess(text,pred))
+        
+        if save_result:
+            for text,result in zip(texts,results):
+                self.result[text] = result
+       
+        return results
+
+
             
     def _tokenizer_for_training(self,dataset):
         res = self.tokenizer(dataset['text'],max_length = self.max_length,padding='max_length',truncation=True)
         return res
     
-    def train(self,my_datasets = None,epoch = 1,batch_size = 4, learning_rate = 2e-5, max_length = 512,save_path = None,checkpoint_path='checkpoint',**kwargs):
+    def train(self,my_datasets = None,epoch = 1,batch_size = 4, learning_rate = 2e-5, gradient_accumulation_steps = 1,
+                    max_length = None,save_path = None,checkpoint_path='checkpoint', **kwargs):
         '''
         训练模型，只保留了最关键几个参数的接口。
         Args:
@@ -252,7 +271,7 @@ class BertBase(ModelBase):
                一般使用预训练bert的初始学习率为1e-4到5e-6之间，使用RNN的初始学习率为1e-3左右。
                
            max_length `int`:
-               默认：512
+               默认：None
                模型处理序列时，处理后的序列长度，如果序列长度不足，则pad，如果序列长度过长，则truncate
                序列长度越长，模型推理的时间也越长。
                
@@ -268,20 +287,33 @@ class BertBase(ModelBase):
         if my_datasets is None:
             assert 0,"请输入有效数据集，或者使用load_dataset()导入数据集"
             
-        dataset = {
+        # dataset = {
+        #     "train":Dataset.from_dict(my_datasets['train']),
+        #     "valid":Dataset.from_dict(my_datasets['valid'])}
+
+        if hasattr(self.config, "resampling") and self.config.resampling:
+            dataset = {
+            "train":Dataset.from_dict(self._resampling_dataset(my_datasets['train'])),
+            "valid":Dataset.from_dict(my_datasets['valid'])
+            }
+        else:
+            dataset = {
             "train":Dataset.from_dict(my_datasets['train']),
-            "valid":Dataset.from_dict(my_datasets['valid'])}
+            "valid":Dataset.from_dict(my_datasets['valid'])
+            }
+        
+        if max_length:
+            self.set_attribute(max_length = max_length)
+        
         print('train dataset: \n',dataset['train'])
         print('valid dataset: \n',dataset['valid'])
+
+        g = lambda data:data.map(self._tokenizer_for_training) #remove_columns=["text","raw_text","raw_label"], batched=True, num_proc=4,
         
-        self.set_attribute(max_length = max_length)
-        
-        g = lambda data:data.map(self._tokenizer_for_training,remove_columns=["text"]) #batched=True, num_proc=4,
         tokenized_datasets = {}
-        for K,V in dataset.items():
-            tokenized_datasets[K] = g(V)
-#         print(tokenized_datasets)
-    
+        for k,v in dataset.items():
+            tokenized_datasets[k] = g(v)
+          
         self.args = TrainingArguments(
             checkpoint_path,
             evaluation_strategy = "epoch",
@@ -289,13 +321,15 @@ class BertBase(ModelBase):
             learning_rate=learning_rate,
             per_device_train_batch_size=batch_size,
             per_device_eval_batch_size=batch_size,
+            gradient_accumulation_steps = gradient_accumulation_steps,
             num_train_epochs=epoch,
             weight_decay=0.01,
             load_best_model_at_end=True,
             save_total_limit = 2,
             metric_for_best_model=self.key_metric,
+            label_smoothing_factor=0,
+            **kwargs
         )
-
 
         self.trainer = Trainer(
             self.model,
@@ -303,14 +337,86 @@ class BertBase(ModelBase):
             train_dataset=tokenized_datasets["train"],
             eval_dataset=tokenized_datasets["valid"],
             tokenizer=self.tokenizer,
-            compute_metrics=self.compute_metrics
+            compute_metrics=self.compute_metrics,
+            # data_collator = self.data_collator if hasattr(self, "data_collator") else DataCollatorWithPadding(self.tokenizer)
         )
 
+
+        from transformers import TrainerState, TrainerControl, PrinterCallback, ProgressCallback
+        from transformers.integrations import TensorBoardCallback
+        from ..utils.trainer import NotebookCallback
+
+        self.trainer.remove_callback(PrinterCallback)
+        self.trainer.remove_callback(ProgressCallback)
+        self.trainer.remove_callback(TensorBoardCallback)
+        self.trainer.add_callback(NotebookCallback)
+
+
         self.trainer.train()
+        
         if save_path:
             self.trainer.save_model(save_path)
+
+        
+
+        # for log in self.trainer.state.log_history:
+        #     self._report(log)
             
+    @torch.no_grad()
+    def eval(self,my_dataset = None,batch_size=2):
+        #模型
+        self.model = self.model.to(self.device)
+        
+        #准备数据集
+        if my_dataset is None:
+            if len(self.datasets["test"]["text"]) == 0:
+                my_dataset = self.datasets["valid"]
+                print("没有test数据集，使用valid数据验证")
+            else:
+                my_dataset = self.datasets["test"]
+
+        my_dataset = Dataset.from_dict(my_dataset).map(self._tokenizer_for_training)
+
+        
+
+        if hasattr(self, "args"):
+            args = self.args
+        else:
+            args = TrainingArguments(
+                per_device_eval_batch_size=batch_size,
+                metric_for_best_model=self.key_metric,
+                label_smoothing_factor=0,
+                **kwargs
+            )
     
+        trainer = Trainer(
+            self.model,
+            self.args,
+            eval_dataset=my_dataset,
+            tokenizer=self.tokenizer,
+            compute_metrics=self.compute_metrics,
+            # data_collator = self.data_collator if hasattr(self, "data_collator") else DataCollatorWithPadding(self.tokenizer)
+        )
+
+
+        from transformers import TrainerState, TrainerControl, PrinterCallback, ProgressCallback
+        from transformers.integrations import TensorBoardCallback
+        from ..utils.trainer import NotebookCallback
+
+        trainer.remove_callback(PrinterCallback)
+        trainer.remove_callback(ProgressCallback)
+        trainer.remove_callback(TensorBoardCallback)
+        trainer.add_callback(NotebookCallback)
+
+        return trainer.evaluate()
+
+        # predictions = trainer.predict(my_dataset)
+
+        # self._report(trainer.state.log_history[-1])
+        # print()#report
+
+
+
     def load_dataset(self,*args,**kwargs):
         '''
         读取数据集。
@@ -385,6 +491,7 @@ class BertBase(ModelBase):
                   |text3| label3|
        Kwargs:   
          
+
          split [Optional] `float`: 默认：0.5
                训练集占比。
                当数据集没有标明训练/验证集的划分时，安装split:(1-split)的比例划分训练集:验证集。
@@ -400,6 +507,9 @@ class BertBase(ModelBase):
           label_as_key `bool`: 默认：False
               如果格式为json且设置label_as_key，等效于json2格式
           
+          label_inline `bool`: 默认：False
+                在行内标注
+
           dataset `str`: 默认：'dataset'
               标示数据集一列的列头。
               例如csv文件中：

@@ -1,11 +1,59 @@
 from .bert_base import BertBase
 import torch # for torch.topk
+from torch import nn
 import torch.nn.functional as F
-from transformers import BertForSequenceClassification,BertTokenizerFast,BertConfig
+from transformers import BertPreTrainedModel,BertForSequenceClassification,BertTokenizerFast,BertConfig,BertModel
 import numpy as np #for np.argmax
-from ..utils.metrics import metrics_for_cls
+from ..utils.loss import FocalLoss
+from .cls_base import CLSBase
 
-class BertCLS(BertBase): 
+class BertCLSModel(BertPreTrainedModel):
+    def __init__(self, config):
+        super(BertCLSModel, self).__init__(config)
+        self.num_labels = config.num_labels
+        self.bert = BertModel(config)
+        self.classifier = nn.Linear(config.hidden_size,self.num_labels)
+
+        if hasattr(config, "focal"):
+            if hasattr(config, "alpha"):
+                alpha = config.alpha
+            else:
+                alpha = 0.25
+            
+            if hasattr(config, "gamma"):
+                gamma = config.gamma
+            else:
+                gamma = 2
+
+            self.loss = FocalLoss(alpha, gamma, self.num_labels)
+        else:
+            self.loss = nn.CrossEntropyLoss()
+
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None,
+              position_ids=None, inputs_embeds=None, head_mask=None):
+        outputs = self.bert(input_ids,
+                            attention_mask=attention_mask,
+                            token_type_ids=token_type_ids,
+                            position_ids=position_ids,
+                            head_mask=head_mask,
+                            inputs_embeds=inputs_embeds)
+        #使用[CLS]
+        cls_output = outputs[0][:,0,:] 
+
+        # 得到判别值
+        logits = self.classifier(cls_output)
+
+        outputs = (logits,)
+        if labels is not None:
+            print(labels.shape,logits.shape)
+            labels = labels.nonzero()[:,1]
+            print(labels.shape,logits.shape)
+            print(labels)
+            loss = self.loss(logits,labels.long())
+            outputs = (loss,) + outputs
+        return outputs
+
+class BertCLS(CLSBase,BertBase): 
     '''
     Bert分类模型
     
@@ -33,82 +81,12 @@ class BertCLS(BertBase):
     '''
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
-        self.model = BertForSequenceClassification.from_pretrained(self.model_path,config = self.config)
+        # self.model = BertForSequenceClassification.from_pretrained(self.model_path,config = self.config)
+        self.model = BertCLSModel.from_pretrained(self.model_path,config = self.config)
+
         if self.key_metric == 'loss':
             if self.num_labels == 2:
                 self.set_attribute(key_metric = 'f1')
             else:
                 self.set_attribute(key_metric = 'macro_f1')
         
-    def align_config(self):
-        super().align_config()
-        if self.labels:
-            if self.label2id:
-                label2id = self.label2id
-                id2label = {v:k for k,v in self.label2id.items()}
-            elif self.id2label:
-                label2id = {v:k for k,v in self.id2label.items()}
-                id2label = self.id2label
-            
-            self.update_config(num_labels = self.num_labels,
-                         label2id = label2id,
-                         id2label = id2label)   
-        elif self.num_labels:
-            if self.label2id:
-                label2id = self.label2id
-                labels = self.label2id.keys()
-                id2label = {v:k for k,v in self.label2id.items()}
-                
-                self.update_config(labels = labels,
-                         label2id = label2id,
-                         id2label = id2label)   
-            elif self.id2labels:
-                id2label = self.id2label
-                labels = [v for k,v in self.id2labels.items()]
-                label2id = {v:k for k,v in self.id2label.items()}
-                self.update_config(labels = labels,
-                         label2id = label2id,
-                         id2label = id2label)  
-            else:
-                labels = [f'LABEL_{i}' for i in range(self.num_labels)]
-                self.update_config(num_labels = self.num_labels,
-                            labels = labels)
-        
-        else:
-            self.update_config(num_labels = 2,
-                         labels = ['LABEL_0','LABEL_1'],
-                         id2label = {0:'LABEL_0',1:'LABEL_1'},
-                         label2id = {'LABEL_0':0,'LABEL_1':1},
-                         )
-
-    def postprocess(self,text,logits,topk=5,print_result = True,save_result = True):
-        logits = F.softmax(torch.tensor(logits),dim=-1)
-        topk = topk if logits.shape[-1] > topk else logits.shape[-1]
-        p,pred = torch.topk(logits,topk)
-        if print_result:
-            self._report_per_sentence(text,pred,p)
-        
-        if save_result:
-            self._save_per_sentence_result(text,pred,p)
-
-    def _report_per_sentence(self,text,pred,p):
-        log = f'text:{text} \n'
-        for i,j in  zip(pred,p):
-            log += '\t pred_classes:{}, \t probability:{:.4f} \n'.format(self.id2label[i.item()],j)
-        print(log)
-    
-    def _save_per_sentence_result(self,text,pred,p):
-        result = {}
-        for topk,(i,j) in enumerate(zip(pred,p)):
-            if topk == 0:
-                result['label'] = self.id2label[i.item()]
-                result['p'] = '{:.4f}'.format(j.item())
-            else:
-                result[f'top{topk+1} label'] = self.id2label[i.item()]
-                result[f'top{topk+1} p'] = '{:.4f}'.format(j.item())
-        
-        self.result[text] = result
-        
-    def compute_metrics(self,eval_pred):
-        dic = metrics_for_cls(eval_pred)
-        return dic

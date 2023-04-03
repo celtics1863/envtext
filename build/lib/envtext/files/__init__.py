@@ -1,22 +1,122 @@
-env_vocab = './env_vocab.jieba.txt'
-onehot_vocab = './onehot_vocab.txt'
-bert_vocab = './bert_vocab.txt'
-word2vec64 = './word2vec64'
-word2vec256 = './word2vec256'
+env_vocab = './vocab/env_vocab.jieba.txt'
+onehot_vocab = './vocab/onehot_vocab.txt'
+bert_vocab = './vocab/bert_vocab.txt'
+stop_words = './vocab/stop_words.txt'
+
+font_dir = './fonts'
+
+word2vec64 = './pretrained_models/word2vec64'
+word2vec256 = './pretrained_models/word2vec256'
 datasets_dir = './datasets'
 sa_intensity = './datasets/SA_Intensity.json'
 cls_isclimate = './datasets/CLS_IsClimate.json'
 cluener = './datasets/CLUENER.json'
 
+templates_dir = './templates'
+js_dir = './js'
+
 import os
 
 basedir = os.path.dirname(__file__)
 
+
+def load_env_vocab():
+    words = []
+    with open(Config.env_vocab, 'r', encoding='utf-8') as f:
+        for line in f.readlines():
+            words.append(line.strip().split(" ")[0])    
+    return words
+
+
+
+def generate_properties(names):
+    """用于批量生成 property 的函数"""
+    def getter(name):
+        return lambda self: self._data.get(name)
+
+    def setter(name):
+        return lambda self, value: self._data.update({name: value})
+
+    properties = {}
+    for name in names:
+        properties[name] = property(getter(name), setter(name))
+    return properties
+
+class ModelConfig:
+    def __init__(self, data):
+        self._data = data
+        for key, value in generate_properties(data.keys()).items():
+            setattr(self.__class__, key, value)
+
+
 class FileConfig:
     def __init__(self):
-#         print(os.path.normpath(env_vocab))
-        pass
+        self.bert = ModelConfig(
+            {
+                "bert_mlm":"celtics1863/env-bert-chinese",
+                "topic_cls":"celtics1863/env-bert-topic",
+                "paper_cls":"celtics1863/env-paper-cls-bert",
+                "policy_cls":"celtics1863/env-policy-cls-bert",
+                "news_cls":"celtics1863/env-news-cls-bert",
+                "pos_ner":"celtics1863/pos-bert",
+            }
+        )        
+
+
+        self.albert = ModelConfig(
+            {
+                "albert_mlm":"celtics1863/env-albert-chinese",
+                "topic_cls":"celtics1863/env-topic-albert",
+                "paper_cls":"celtics1863/env-paper-cls-albert",
+                "news_cls":"celtics1863/env-news-cls-albert",
+                "policy_cls":"celtics1863/env-policy-cls-albert",
+                "pos_ner":"celtics1863/env-pos-ner-albert"
+            }
+        )
+    
+    @property
+    def pretrained_cls_models(self):
+        cls_models = []
+        for k,v in self.albert._data.items():
+            if k.endswith("cls"):
+                cls_models.append(v)
+
+        for k,v in self.bert._data.items():
+            if k.endswith("cls"):
+                cls_models.append(v)
         
+        return cls_models
+
+    @property
+    def pretrained_ner_models(self):
+        ner_models = []
+        for k,v in self.albert._data.items():
+            if k.endswith("ner"):
+                ner_models.append(v)
+
+        for k,v in self.bert._data.items():
+            if k.endswith("ner"):
+                ner_models.append(v)
+        
+        return ner_models
+
+    @property
+    def pretrained_mlm_models(self):
+        mlm_models = []
+        for k,v in self.albert._data.items():
+            if k.endswith("mlm"):
+                mlm_models.append(v)
+
+        for k,v in self.bert._data.items():
+            if k.endswith("mlm"):
+                mlm_models.append(v)
+        
+        return mlm_models
+
+    @property
+    def pretrained_models(self):
+        return list(self.albert._data.values()) + list(self.bert._data.values())
+
     @property
     def env_vocab(self):
         return self.get_abs_path(env_vocab)
@@ -41,7 +141,7 @@ class FileConfig:
     def datasets(self):
         datasets = []
         for file in os.listdir(os.path.join(basedir,datasets_dir)):
-            datasets.append(os.path.join(basedir,datasets_dir,file))
+            datasets.append(os.path.normpath(os.path.join(basedir,datasets_dir,file)))
         return datasets
     
     @property
@@ -90,6 +190,40 @@ class FileConfig:
                 names[name] = k
         return names
     
+    @property
+    def fonts(self):
+        _font_dir = self.get_abs_path(font_dir)
+        fonts = {font.split('.')[0]: os.path.normpath(os.path.join(_font_dir,font))  for font in os.listdir(_font_dir)}
+        return fonts
+    
+    @property
+    def stop_words(self):
+        stop_words_path = self.get_abs_path(stop_words)
+        
+        _stop_words = {}
+        
+        with open(stop_words_path,'r',encoding='utf-8') as f:
+            for word in f:
+                _stop_words[word.strip()] = True
+            f.close()
+        
+        return _stop_words
+    
+
+    @property
+    def templates_dir(self):
+        return self.get_abs_path(templates_dir)
+
+    @property
+    def js_dir(self):
+        return self.get_abs_path(js_dir)
+
+    @property
+    def js(self):
+        _js_dir = self.get_abs_path(js_dir)
+        js = [os.path.normpath(os.path.join(_js_dir,j))  for j in os.listdir(_js_dir)]
+        return js
+
     def get_word2vec_path(self,vector_size = 64):
         if vector_size == 256:
             return self.word2vec256
@@ -98,3 +232,7 @@ class FileConfig:
 
     def get_abs_path(self,relative_path):
         return os.path.normpath(os.path.join(basedir,relative_path))
+
+
+
+Config = FileConfig()

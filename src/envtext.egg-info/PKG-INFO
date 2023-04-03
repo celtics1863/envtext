@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: envtext
-Version: 0.0.14
+Version: 0.1.0
 Summary: envtext for Chinese texts analysis in Environment domain
 Home-page: https://github.com/celtics1863/envtext
 Author: Bi Huaibin
@@ -25,6 +25,9 @@ Requires-Python: >=3.6
 Description-Content-Type: text/markdown
 
 # envText
+
+[English](README-en.md)
+
 
 **首款**中文环境领域文本分析工具。仍然在内测中，敬请期待。
 

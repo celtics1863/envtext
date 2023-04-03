@@ -45,10 +45,10 @@ print(Config.pretrained_models)
 | topic classification | env-bert | celtics1863/env-topic | 63 labels | [link](https://huggingface.co/celtics1863/env-topic) |
 | Part-of-speech | env-bert | celtics1863/pos-bert | 41 labels | [link](https://huggingface.co/celtics1863/pos-bert) |
 | Masked language Model | env-albert | celtics1863/env-albert-chinese| --- | [link](https://huggingface.co/celtics1863/env-albert-chinese) |
-| news classification | env-albert | celtics1863/env-news-cls-bert | 8 labels | [link](https://huggingface.co/celtics1863/env-news-cls-bert) |
-| paper classification | env-albert | celtics1863/env-news-cls-bert | 10 labels | [link](https://huggingface.co/celtics1863/env-news-cls-bert) |
-| policy classification | env-albert | celtics1863/env-news-cls-bert | 15 labels | [link](https://huggingface.co/celtics1863/env-news-cls-bert) |
-| topic classification | env-albert | celtics1863/env-topic | 63 labels | [link](https://huggingface.co/celtics1863/env-topic) |
+| news classification | env-albert | celtics1863/env-news-cls-albert | 8 labels | [link](https://huggingface.co/celtics1863/env-news-cls-albert) |
+| paper classification | env-albert | celtics1863/env-paper-cls-albert | 10 labels | [link](https://huggingface.co/celtics1863/env-paper-cls-albert) |
+| policy classification | env-albert | celtics1863/env-policy-cls-albert | 15 labels | [link](https://huggingface.co/celtics1863/env-policy-cls-albert) |
+| topic classification | env-albert | celtics1863/env-topic | 63 labels | [link](https://huggingface.co/celtics1863/env-topic-albert) |
 | Part-of-speech | env-albert | celtics1863/pos-ner-albert | 41 labels | [link](https://huggingface.co/celtics1863/pos-ner-albert) |
 | word2vec | word2vec | word2vec | ---- | [link](https://links.jianshu.com/go?to=https%3A%2F%2Farxiv.org%2Fabs%2F1301.3781v3) |
 | word2vec | env-bert | bert2vec | ---- | [link](https://huggingface.co/celtics1863/env-bert-chinese) |
