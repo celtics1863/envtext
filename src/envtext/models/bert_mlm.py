@@ -26,7 +26,7 @@ class BertMLM(BertBase):
         super().initialize_bert(path,config,**kwargs)
         self.model = BertForMaskedLM.from_pretrained(self.model_path,config = self.config)
 
-    def predict_per_sentence(self,text,topk = 5,print_result = True,save_result = True):
+    def predict(self,text,topk = 5,print_result = True,save_result = True):
         tokens=self.tokenizer.encode(text, max_length = self.max_length, return_tensors='pt',add_special_tokens=True,truncation = True)[0].to(self.model.device)
         # print(mask_input_ids)
         mask_inds = self._get_mask_id(tokens)

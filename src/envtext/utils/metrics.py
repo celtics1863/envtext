@@ -1,7 +1,7 @@
 import numpy as np
 import math
 
-eps = 1e-5 #避免除0
+eps = 1e-7 #避免除0
 
 def rmse(eval_pred):
     '''
@@ -97,8 +97,92 @@ def confusion_matrix_for_binary_logits(eval_pred):
             matrix[idx][i,j] += 1
     return matrix
 
+def get_labeled_entities(pred,label,ner_encoding = 'BIO'):
+    # 标注了多少个实体：
+    p = 0 #指针
+    entities = [] #[实体类别，开始位置，结束位置]
+    flag = False
+    start,end = -1,-1
+    #一个状态机
+    for start,c in enumerate(pred): # len(pred) >= len(label)
+        if c < 0 or (start < len(label) and label[start] < 0): #pred 或 label 出现 -100
+            break
+        #BIO
+        if ner_encoding == 'BIO' and c > 0: #start B
+            class_id = (c-1) // 2
+            
+            if start < end:
+                continue
+                
+            end = start
+            while end < len(pred) and end < len(label) \
+                    and pred[end] >= 0 and label[end] >=0 \
+                    and (pred[end] -1)//2 == class_id :
+                end +=1
+            entities.append([class_id,start,end])
+            end += 1 #end = entity_loc_y + 1
+        #IO
+        elif ner_encoding == 'IO' and c > 0:
+            class_id = c-1
+            end = start
+            while (end < len(pred) and pred[end] == c) and (end < len(label) and label[end]>=0):
+                end += 1
+            entities.append([class_id,start,end-1])
 
-def confusion_matrix_for_ner(eval_pred):
+        #BIOE
+        elif ner_encoding == 'BIOE' and c > 0 :
+            class_id = (c-1)//3
+            
+            if start < end:
+                continue
+            
+            end = start
+            while end < len(pred):
+                if end == len(pred) - 1 or end == len(label) - 1 or label[end+1] < 0:
+                    entities.append([class_id,start,end])
+                    break
+                elif pred[end] % 3 == 2: #E stop
+                    entities.append([class_id,start,end])
+                    break
+                elif pred[end] % 3 == 0 or pred[end] % 3 == 1: # B O I
+                    entities.append([class_id,start,end-1])
+                    break
+                else:
+                    end += 1
+        #BIOES
+        elif ner_encoding == 'BIOES' and c > 0 :
+            class_id = (c-1)//4
+            
+            if start < end:
+                continue
+            
+            end = start
+            if c % 4 == 0: #S
+                entities.append([class_id,start,start])
+
+            while end < len(pred):
+                if end == len(pred) - 1 or end == len(label) - 1 or label[end+1] < 0:
+                    entities.append([class_id,start,end])
+                    break
+                elif pred[end] % 4 == 3: #E stop
+                    entities.append([class_id,start,end])
+                    break
+                elif pred[end] % 4 == 0 or pred[end] % 4 == 1: # B O I
+                    entities.append([class_id,start,end-1])
+                    break
+                else:
+                    end += 1
+                
+    return entities    
+
+def softmax( f ):
+    return np.exp(f) / np.sum(np.exp(f),axis=-1)[...,None]
+
+def sigmoid(x):
+    return np.exp(x) / (1 + np.exp(x))
+
+
+def confusion_matrix_for_ner(eval_pred,ner_encoding = 'BIO',transition = None,return_all = False):
     '''
     困惑矩阵计算，用于序列标注问题。
     eval_pred (`tuple`):
@@ -107,50 +191,71 @@ def confusion_matrix_for_ner(eval_pred):
            shape of labels: (batchsize,sequence length)
            不计算labels中小于0的标签
     '''
-    predictions, labels = eval_pred
-    predictions_labels = np.argmax(predictions,axis=-1)
+    predictions_labels = None
+    try:
+        predictions, labels = eval_pred
+        predictions_labels = np.argmax(predictions,axis=-1)
+    except:
+        predictions, predictions_labels, labels = eval_pred
+
+    
+    if transition is None and predictions_labels is None:
+        predictions_labels = np.argmax(predictions,axis=-1)
+    elif predictions_labels is None:
+        #使用viterbi解码
+        #取对数
+        predictions_p = np.log(softmax(predictions)+eps)
+
+        transition = np.log(transition + eps)
+
+        predictions_labels = []
+        
+        for b in range(predictions.shape[0]):
+            observation = predictions_p[b]
+            start = 0
+            # P(path->B) = P(path) * P(B) * P(A->B|path,B) #A is the last value of path
+            #            = P(path) * P(B) * P(A->B|A,B) 
+            dp = np.zeros_like(observation)
+            prev_states = np.zeros_like(dp,dtype=np.int64)
+            for i in range(len(observation)):
+                if i == 0:
+                    dp[i] = observation[i]
+                else:
+                    for t in range(len(transition)):
+                        arr = [dp[i-1,c] + transition[c,t] + observation[i,t] for c in range(len(transition))]
+                        dp[i,t] = np.max(arr)
+                        prev_states[i,t] = np.argmax(arr)
+
+            path = [np.argmax(dp[-1])] 
+            for i in range(len(observation)-1,0,-1):
+                path.append(prev_states[i,int(path[-1])])
+            
+            path.reverse()
+            predictions_labels.append(path)
+
+
+        predictions_labels = np.array(predictions_labels).astype("int").tolist()
+
+        old = np.argmax(predictions,axis=-1)
+        new = np.array(predictions_labels)
+
+
     #BIO 标注
     #多少种实体：
-    emtity_num = (predictions.shape[-1] - 1) // 2
+    if ner_encoding == 'BIO':
+        entity_num = (predictions.shape[-1] - 1) // 2
+    elif ner_encoding == 'IO':
+        entity_num = (predictions.shape[-1] - 1) 
+    elif ner_encoding == 'BIOE':
+        entity_num = (predictions.shape[-1] - 1) // 3 
+    elif ner_encoding == 'BIOES':
+        entity_num = (predictions.shape[-1] - 1) // 4
     
-    # 标注了多少个实体：
-    def get_labeled_entities(preds,labels):
-        p = 0 #指针
-        entities = [] #[实体类别，开始位置，结束位置]
-        flag = False
-        start,end = -1,-1
-        while True:
-            if p == len(labels) or p == len(preds) or labels[p] < 0:
-                if flag and start > 0:
-                    entities.append([preds[start]//2,start,p])
-                break
-            elif (not flag) and (preds[p] % 2 == 1):
-                flag = True
-                start = p
-            elif flag and (preds[p] % 2 == 0):
-                if preds[p] == 0 :
-                    end = p
-                    if start > 0 and end > 0:
-                        entities.append([preds[start]//2,start,end])
-                    flag = False
-                elif preds[p]-1 == preds[start]:
-                    pass
-                else:
-                    flag = False
-                    start,end = -1,-1
-                    pass
-            else:
-                flag = False
-                start,end = -1,-1
-                pass
-            p += 1
-        return entities
-    
-    seqs_preds_entities = map(get_labeled_entities,predictions_labels,labels)
-    seqs_labels_entities = map(get_labeled_entities,labels,labels)
+    seqs_preds_entities = map(lambda x,y: get_labeled_entities(x,y,ner_encoding),predictions_labels,labels)
+    seqs_labels_entities = map(lambda x,y: get_labeled_entities(x,y,ner_encoding),labels,labels)
     
     def get_tp_fp_fn(preds_entities,labels_entities):
-        tp,tn,fp,fn = [0]*emtity_num,[0]*emtity_num,[0]*emtity_num,[0]*emtity_num
+        tp,tn,fp,fn = [0]*entity_num,[0]*entity_num,[0]*entity_num,[0]*entity_num
         for entity in labels_entities:
             if entity in preds_entities:
                 tp[entity[0]] += 1
@@ -163,9 +268,14 @@ def confusion_matrix_for_ner(eval_pred):
         
         return [tp,fn,fp,tn]
     
-    matrix = np.sum(list(map(get_tp_fp_fn,seqs_preds_entities,seqs_labels_entities)),axis = 0)
-    matrix = np.array(matrix).reshape(2,2,emtity_num).transpose(2,0,1)
-    return matrix
+    matrix_of_seqs = list(map(get_tp_fp_fn,seqs_preds_entities,seqs_labels_entities))
+    matrix = np.sum(matrix_of_seqs,axis = 0)
+    matrix = np.array(matrix).reshape(2,2,entity_num).transpose(2,0,1)
+
+    if return_all:
+        return matrix, matrix_of_seqs
+    else:
+        return matrix
 
 
 def precision(eval_pred):
@@ -176,10 +286,10 @@ def precision(eval_pred):
     '''
     predictions, labels = eval_pred
     predictions_labels = np.argmax(predictions,axis=1)
-    TP = sum((labels==1) == (predictions_labels==1))
-    TN = sum((labels==0) == (predictions_labels==0))
-    FP = sum((labels==0) == (predictions_labels==1))
-    FN = sum((labels==1) == (predictions_labels==0))
+    TP = sum(np.logical_and(labels==1,predictions_labels==1))
+    TN = sum(np.logical_and(labels==0,predictions_labels==0))
+    FP = sum(np.logical_and(labels==0,predictions_labels==1))
+    FN = sum(np.logical_and(labels==1,predictions_labels==0))
     return TP/(TP+FP+eps)
 
 def precision_for_binary_logits(eval_pred):
@@ -190,13 +300,13 @@ def precision_for_binary_logits(eval_pred):
     '''
     predictions, labels = eval_pred
     predictions_labels = predictions > 0.5
-    TP = sum((labels==1) == (predictions_labels==1))
-    TN = sum((labels==0) == (predictions_labels==0))
-    FP = sum((labels==0) == (predictions_labels==1))
-    FN = sum((labels==1) == (predictions_labels==0))
+    TP = sum(np.logical_and(labels==1,predictions_labels==1))
+    TN = sum(np.logical_and(labels==0,predictions_labels==0))
+    FP = sum(np.logical_and(labels==0,predictions_labels==1))
+    FN = sum(np.logical_and(labels==1,predictions_labels==0))
     return TP/(TP+FP+eps)
 
-def precision_for_ner(eval_pred):
+def precision_for_ner(eval_pred,ner_encoding = 'BIO',transition = None,confusion_matrix = None):
     '''
     精确率计算，用于序列标注问题。
     eval_pred (`tuple`):
@@ -205,63 +315,15 @@ def precision_for_ner(eval_pred):
            shape of labels: (batchsize,sequence length)
            不计算labels中小于0的标签
     '''
-    predictions, labels = eval_pred
-    predictions_labels = np.argmax(predictions,axis=-1)
-    #BIO 标注
-    # 标注了多少个实体：
-    def get_labeled_entities(preds,labels):
-        p = 0 #指针
-        entities = []
-        flag = False
-        start,end = -1,-1
-        while True:
-            if p == len(labels) or p == len(preds) or labels[p] < 0:
-                if flag and start > 0:
-                    entities.append([start,p])
-                break
-            elif (not flag) and (preds[p] % 2 == 1):
-                flag = True
-                start = p
-            elif flag and (preds[p] % 2 == 0):
-                if preds[p] == 0 :
-                    end = p
-                    if start > 0 and end > 0:
-                        entities.append([start,end])
-                    flag = False
-                    start,end = -1,-1
-                elif preds[p]-1 == preds[start]:
-                    pass
-                else:
-                    end = p
-                    if start > 0 and end > 0:
-                        entities.append([start,end])
-                    flag = False
-                    start,end = -1,-1
-            else:
-                flag = False
-                start,end = -1,-1
-            p += 1
-        return entities
+
+    if confusion_matrix is None:
+        predictions, labels = eval_pred
+        predictions_labels = np.argmax(predictions,axis=-1)
+        confusion_matrix = confusion_matrix_for_ner(eval_pred,ner_encoding,transition)
     
-    seqs_preds_entities = map(get_labeled_entities,predictions_labels,labels)
-    seqs_labels_entities = map(get_labeled_entities,labels,labels)
-    
-    def get_tp_fp_fn(preds_entities,labels_entities):
-        tp,tn,fp,fn = 0,0,0,0
-        for entity in labels_entities:
-            if entity in preds_entities:
-                tp += 1
-            else:
-                fn += 1
-        
-        for entity in preds_entities:
-            if entity not in labels_entities:
-                fp += 1
-        
-        return [tp,fn,fp]
-    
-    TP,FN,FP = np.sum(list(map(get_tp_fp_fn,seqs_preds_entities,seqs_labels_entities)),axis = 0)
-    return TP/(TP+FP+eps)
+    matrix = confusion_matrix.sum(axis=0)
+    return matrix[0][0] / (matrix[0][0] + matrix[1][0] + eps)
+
 
 def recall(eval_pred):
     '''
@@ -271,10 +333,10 @@ def recall(eval_pred):
     '''
     predictions, labels = eval_pred
     predictions_labels = np.argmax(predictions,axis=1)
-    TP = sum((labels==1) == (predictions_labels==1))
-    TN = sum((labels==0) == (predictions_labels==0))
-    FP = sum((labels==0) == (predictions_labels==1))
-    FN = sum((labels==1) == (predictions_labels==0))
+    TP = sum(np.logical_and(labels==1,predictions_labels==1))
+    TN = sum(np.logical_and(labels==0,predictions_labels==0))
+    FP = sum(np.logical_and(labels==0,predictions_labels==1))
+    FN = sum(np.logical_and(labels==1,predictions_labels==0))
     return TP/(TP+FN+eps)   
 
 def recall_for_binary_logits(eval_pred):
@@ -285,13 +347,13 @@ def recall_for_binary_logits(eval_pred):
     '''
     predictions, labels = eval_pred
     predictions_labels = predictions > 0.5
-    TP = sum((labels==1) == (predictions_labels==1))
-    TN = sum((labels==0) == (predictions_labels==0))
-    FP = sum((labels==0) == (predictions_labels==1))
-    FN = sum((labels==1) == (predictions_labels==0))
+    TP = sum(np.logical_and(labels==1,predictions_labels==1))
+    TN = sum(np.logical_and(labels==0,predictions_labels==0))
+    FP = sum(np.logical_and(labels==0,predictions_labels==1))
+    FN = sum(np.logical_and(labels==1,predictions_labels==0))
     return TP/(TP+FN+eps) 
 
-def recall_for_ner(eval_pred):
+def recall_for_ner(eval_pred,ner_encoding = 'BIO',transition = None,confusion_matrix = None):
     '''
     召回率计算，用于序列标注问题。
     eval_pred (`tuple`):
@@ -300,65 +362,11 @@ def recall_for_ner(eval_pred):
            shape of labels: (batchsize,sequence length)
            不计算labels中小于0的标签
     '''
-    predictions, labels = eval_pred
-    predictions_labels = np.argmax(predictions,axis=-1)
-    #BIO 标注
-    # 标注了多少个实体：
-    def get_labeled_entities(preds,labels):
-        p = 0 #指针
-        entities = []
-        flag = False
-        start,end = -1,-1
-        while True:
-            if p == len(labels) or p == len(preds) or labels[p] < 0:
-                if flag and start > 0:
-                    entities.append([start,p])
-                break
-            elif (not flag) and (preds[p] % 2 == 1):
-                flag = True
-                start = p
-            elif flag and (preds[p] % 2 == 0):
-                if preds[p] == 0 :
-                    end = p
-                    if start > 0 and end > 0:
-                        entities.append([start,end])
-                    flag = False
-                    start,end = -1,-1
-                elif preds[p]-1 == preds[start]:
-                    pass
-                else:
-                    end = p
-                    if start > 0 and end > 0:
-                        entities.append([start,end])
-                    flag = False
-                    start,end = -1,-1
-            else:
-                flag = False
-                start,end = -1,-1
-            p += 1
-        return entities
+    if confusion_matrix is None:
+        confusion_matrix = confusion_matrix_for_ner(eval_pred,ner_encoding,transition)
+    matrix = confusion_matrix.sum(axis=0)
     
-    seqs_preds_entities = map(get_labeled_entities,predictions_labels,labels)
-    seqs_labels_entities = map(get_labeled_entities,labels,labels)
-    
-    def get_tp_fp_fn(preds_entities,labels_entities):
-        tp,tn,fp,fn = 0,0,0,0
-        for entity in labels_entities:
-            if entity in preds_entities:
-                tp += 1
-            else:
-                fn += 1
-        
-        for entity in preds_entities:
-            if entity not in labels_entities:
-                fp += 1
-        
-        return [tp,fn,fp]
-    
-    TP,FN,FP = np.sum(list(map(get_tp_fp_fn,seqs_preds_entities,seqs_labels_entities)),axis = 0)
-    
-    return TP/(TP+FN+eps)
-
+    return matrix[0][0] / (matrix[0][0] + matrix[0][1] + eps)
 
 def f1(eval_pred):
     '''
@@ -368,16 +376,18 @@ def f1(eval_pred):
     '''
     predictions, labels = eval_pred
     predictions_labels = np.argmax(predictions,axis=1)
-    TP = sum((labels==1) == (predictions_labels==1))
-    TN = sum((labels==0) == (predictions_labels==0))
-    FP = sum((labels==0) == (predictions_labels==1))
-    FN = sum((labels==1) == (predictions_labels==0))
+    # TP = sum((labels==1) == (predictions_labels==1))
+    TP = sum(np.logical_and(labels==1,predictions_labels==1))
+    TN = sum(np.logical_and(labels==0,predictions_labels==0))
+    FP = sum(np.logical_and(labels==0,predictions_labels==1))
+    FN = sum(np.logical_and(labels==1,predictions_labels==0))
+
     precision = TP/(TP+FP+eps)
     recall = TP/(TP+FN+eps)    
     return 2*precision*recall / (precision+recall+eps)
 
 
-def f1_for_ner(eval_pred):
+def f1_for_ner(eval_pred,ner_encoding = 'BIO',transition = None,confusion_matrix = None):
     '''
     f1-score计算，用于序列标注问题。
     eval_pred (`tuple`):
@@ -386,8 +396,8 @@ def f1_for_ner(eval_pred):
            shape of labels: (batchsize,sequence length)
            不计算labels中小于0的标签
     '''
-    precision = precision_for_ner(eval_pred)
-    recall = recall_for_ner(eval_pred)
+    precision = precision_for_ner(eval_pred,ner_encoding,transition,confusion_matrix)
+    recall = recall_for_ner(eval_pred,ner_encoding,transition,confusion_matrix)
     return 2*precision*recall / (precision+recall+eps)
 
 def micro_f1(eval_pred):
@@ -423,7 +433,7 @@ def micro_f1_for_binary_logits(eval_pred):
     return 2*precision*recall / (precision+recall+eps)
 
 
-def micro_f1_for_ner(eval_pred):
+def micro_f1_for_ner(eval_pred,ner_encoding = 'BIO',transition = None,confusion_matrix = None):
     '''
     micro_f1 计算，用于namely entity recognition问题
     eval_pred (`tuple`):
@@ -432,8 +442,9 @@ def micro_f1_for_ner(eval_pred):
            shape of labels: (batchsize,sequence length)
            不计算labels中小于0的标签
     '''
-    matrix = confusion_matrix_for_ner(eval_pred)
-    matrix = matrix.sum(axis=0)
+    if confusion_matrix is None:
+        confusion_matrix = confusion_matrix_for_ner(eval_pred,ner_encoding,transition)
+    matrix = confusion_matrix.sum(axis=0)
     TP,TN,FP,FN = \
         matrix[0,0],matrix[1,1],matrix[0,1],matrix[1,0]
     precision = TP/(TP+FP+eps)
@@ -475,7 +486,7 @@ def macro_f1_for_binary_logits(eval_pred):
         return 2*precision*recall / (precision+recall+eps)  
     return sum(map(fun,matrix))/len(matrix)
 
-def macro_f1_for_ner(eval_pred):
+def macro_f1_for_ner(eval_pred,ner_encoding = 'BIO',transition = None,confusion_matrix = None):
     '''
     macro_f1 计算，用于namely entity recognition问题
     eval_pred (`tuple`):
@@ -484,14 +495,16 @@ def macro_f1_for_ner(eval_pred):
            shape of labels: (batchsize,sequence length)
            不计算labels中小于0的标签
     '''
-    matrix = confusion_matrix_for_ner(eval_pred)
+    if confusion_matrix is None:
+        confusion_matrix = confusion_matrix_for_ner(eval_pred,ner_encoding,transition)
+
     def fun(matrix):
         tp,fp,fn = \
             matrix[0,0],matrix[0,1],matrix[1,0]
         precision = tp/(tp+fp+eps)
         recall = tp/(tp+fn+eps)    
         return 2*precision*recall / (precision+recall+eps)  
-    return sum(map(fun,matrix))/len(matrix)
+    return sum(map(fun,confusion_matrix))/len(confusion_matrix)
 
 #https://zhuanlan.zhihu.com/p/374269641
 def find_topk(a, k, axis=-1, largest=True, sorted=True):
@@ -622,28 +635,48 @@ def metrics_for_cls_with_binary_logits(eval_pred):
         }
     return report
 
-def metrics_for_ner(eval_pred):
+def metrics_for_ner(eval_pred,ner_encoding = 'BIO',transition = None):
     '''
     用于NER问题的评价指标报告
     '''
-    predictions, labels = eval_pred
+    
+    try:
+        predictions, labels = eval_pred
+    except:
+        predictions, preds_seq , labels = eval_pred
+
+    if ner_encoding == 'BIOES':
+        NUM_LABLES = (predictions.shape[-1] -1) // 4
+    elif ner_encoding == "BIOE":
+        NUM_LABLES = (predictions.shape[-1] -1) // 3
+    elif ner_encoding == 'IO':
+        NUM_LABLES = predictions.shape[-1] - 1
     # BIO 标注
-    NUM_LABLES = predictions.shape[-1] // 2
+    elif ner_encoding == 'BIO':
+        NUM_LABLES = (predictions.shape[-1] -1) // 2
+
+
+    matrix,metric_for_seq = confusion_matrix_for_ner(eval_pred,ner_encoding,transition,return_all=True)
+
     if NUM_LABLES == 1:
         report =  {
-            'f1':f1_for_ner(eval_pred),
-            'accuracy':accuracy_for_ner(eval_pred),
-            'precision':precision_for_ner(eval_pred),
-            'recall':recall_for_ner(eval_pred),
+            'f1':f1_for_ner(eval_pred,ner_encoding,transition,matrix),
+            'precision':precision_for_ner(eval_pred,ner_encoding,transition,matrix),
+            'recall':recall_for_ner(eval_pred,ner_encoding,transition,matrix),
+            'confusion_matrix':matrix.tolist(),
+            'metric_for_seq':metric_for_seq,
         }
     else:
         report =  {
-            'f1':f1_for_ner(eval_pred),
-            'accuracy':accuracy_for_ner(eval_pred),
-            'precision':precision_for_ner(eval_pred),
-            'recall':recall_for_ner(eval_pred),
-            'micro_f1':micro_f1_for_ner(eval_pred),
-            'macro_f1':macro_f1_for_ner(eval_pred),
+            'f1':f1_for_ner(eval_pred,ner_encoding,transition,matrix),
+            'precision':precision_for_ner(eval_pred,ner_encoding,transition,matrix),
+            'recall':recall_for_ner(eval_pred,ner_encoding,transition,matrix),
+            'micro_f1':micro_f1_for_ner(eval_pred,ner_encoding,transition,matrix),
+            'macro_f1':macro_f1_for_ner(eval_pred,ner_encoding,transition,matrix),
+            'confusion_matrix':matrix.tolist(),
+            'metric_for_seq':metric_for_seq,
         }
+    
+    # print(matrix)
     return report
     

@@ -1,39 +1,47 @@
-from .load_dataset import *
+from .load_files import *
 from collections import defaultdict
-from ..files import FileConfig
-
+from ..files import Config
+from .dataset_utils import _unify_task
 
 def sampler_dataset(dataset, p = 0.5):
     import random
-    sampled_dataset = {'train':defaultdict(list),'valid':defaultdict(list),'test':defaultdict(list)}
-    for k,v in dataset.items():
-        keys = list(v.keys())
+    sampled_dataset = {'train':defaultdict(list),'valid':dataset["valid"],'test':dataset["test"]}
+
+    k,v = "train",dataset["train"]
+    keys = list(v.keys())
+
+    if isinstance(p, float) or p == 1.0:
         for values in zip(*(v[kk] for kk in keys)):
             if random.random() < p:
                 for kk,vv in zip(keys,values):
                     sampled_dataset[k][kk].append(vv)
+    elif isinstance(p, int):
+        ids = set(random.choices(range(len(v["text"])), k=p))
+        for idx,values in enumerate(zip(*(v[kk] for kk in keys))):
+            if idx in ids:
+                for kk,vv in zip(keys,values):
+                    sampled_dataset[k][kk].append(vv)
+    else:
+        return dataset
+
+    # sampled_dataset = {'train':defaultdict(list),'valid':defaultdict(list),'test':defaultdict(list)}
+
+    # k,v = "train",dataset["train"]
+    # keys = list(v.keys())
+
+    # for k,v in dataset.items():
+    #     keys = list(v.keys())
+    #     for values in zip(*(v[kk] for kk in keys)):
+    #         if random.random() < p:
+    #             for kk,vv in zip(keys,values):
+    #                 sampled_dataset[k][kk].append(vv)
                 
     return sampled_dataset
 
 
-#确认task
-def _unify_task(task):
-    if task.lower() in [0,'cls','classification','classify']:
-        return 'CLS'
-    elif task.lower() in [1,'reg','regression','regressor','sa','sentitive analysis']:
-        return 'REG'
-    elif task.lower() in [2,'ner','namely entity recognition']:
-        return 'NER'
-    elif task.lower() in [2,'key','kw','key word','keyword','keywords','key words']:
-        return 'KW'
-    elif task.lower() in [3,'mcls','multi-class','multiclass','multiclasses','mc','multi-choice','multichoice']:
-        return 'MCLS'
-    elif task.lower() in [4,'cluener','clue_ner','clue ner']:
-        return 'CLUENER'
-
-
-def load_dataset(path,task = None,format = None , sampler = 1 ,split=0.5,label_as_key = False,
-                       sep = ' ',dataset = 'dataset',train = 'train',valid = 'valid' ,test = 'test', text = 'text', label = 'label'):
+def load_dataset(path,task = None,format = None , sampler = 1 ,split=0.5,label_as_key = False, label_inline = False,ner_encoding = 'BIO',
+                       sep = ' ',dataset = 'dataset',train = 'train',valid = 'valid' ,test = 'test', text = 'text', label = 'label',
+                        entity_label = 'label',loc = 'loc',**kwargs):
     '''
     读取训练数据集的通用接口，用来处理各种输入。
     format = 'json'
@@ -119,10 +127,8 @@ def load_dataset(path,task = None,format = None , sampler = 1 ,split=0.5,label_a
        
     '''
 #     kwargs = {'task':task,'split':split,'sep':sep,'dataset':dataset,'train':train,'valid':valid,'test':test,'label':label}
-    config = FileConfig()
-
-    if path.lower() in config.datasets_names:
-        info = config.datasets_info[config.datasets_names[path.lower()]]
+    if path.lower() in Config.datasets_names:
+        info = Config.datasets_info[Config.datasets_names[path.lower()]]
         task = info['task']
         format = info['format']
         path = info['path']
@@ -131,37 +137,68 @@ def load_dataset(path,task = None,format = None , sampler = 1 ,split=0.5,label_a
     
     if task == 'CLUENER':
         format = 'jsonL'
-        
+ 
+    kwargs.update({
+        'path':path,
+        'task':task,
+        'format':format,
+        'sampler':sampler,
+        'split':split,
+        'label_as_key':label_as_key,
+        'label_inline':label_inline,
+        'ner_encoding':ner_encoding,
+        'sep':sep,
+        'dataset': dataset,
+        'train': train,
+        'valid':valid,
+        'test': test,
+        'text':text, 
+        'label':label,
+        'entity_label':entity_label,
+        'loc':loc
+        })
+
+    
     if format is None:
         if path.split('.')[-1] == 'json':
             try:
-                datasets,config = LoadJson.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+                datasets,config = LoadJson.load_dataset(**kwargs)
             except:
-                datasets,config = LoadJson2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+                datasets,config = LoadJson2.load_dataset(**kwargs)
         elif path.split('.')[-1] == 'csv':
-            datasets,config = LoadExcel.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+            datasets,config = LoadExcel.load_dataset(**kwargs)
         else:
             try:
-                datasets,config = LoadText.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+                datasets,config = LoadText.load_dataset(**kwargs)
             except:      
-                datasets,config = LoadText2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+                datasets,config = LoadText2.load_dataset(**kwargs)
             
     elif format == 'json' and not label_as_key:
-        datasets,config = LoadJson.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadJson.load_dataset(**kwargs)
     elif format == 'json2' or (format == 'json' and label_as_key):
-        datasets,config = LoadJson2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadJson2.load_dataset(**kwargs)
     elif format == 'jsonL':
-        datasets,config = LoadJsonL.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadJsonL.load_dataset(**kwargs)
+    elif format.startswith('text') and label_inline:
+        if kwargs["task"] in ["DP","Triple","Relation"]:
+            kwargs["sep"] = "\n\n"
+            datasets,config = LoadRawText.load_dataset(**kwargs)
+        else:
+            datasets,config = LoadRawText.load_dataset(**kwargs)
     elif format == 'text':
-        datasets,config = LoadText.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
-    elif format == 'text2':
-        datasets,config = LoadText2.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
-    elif format == 'excel':
-        datasets,config = LoadExcel.load_dataset(path,task,split,sep,dataset,train,valid,test,text,label)
+        datasets,config = LoadText.load_dataset(**kwargs)
+
+    elif format in ['text2','textline']:
+        datasets,config = LoadText2.load_dataset(**kwargs)
+    elif format in ['excel','csv','xlsx','xls']:
+        datasets,config = LoadExcel.load_dataset(**kwargs)
     else:
         raise NotImplemented
     
-    if sampler and 0 < sampler < 1:
+    if sampler:
         datasets = sampler_dataset(datasets,sampler)
     
+    for k in datasets:
+        config[f"num_{k}_texts"] = len(datasets[k]["text"])
+        
     return datasets,config

@@ -8,3 +8,11 @@ from .rnn_sa import RNNSA
 from .rnn_multichoice import RNNMultiChoice
 from .rnn_ner import RNNNER
 from .word2vec import load_word2vec
+from .bert_triple import BertTriple #,BertTripleModel
+from .bert_relation import BertRelation
+from .bert2vec import Bert2Vec
+from .bert_gp import BertGP
+from .bert_span import BertSpan
+from .sim2vec import Sim2Vec
+from .albert_cls import AlbertCLS
+from .albert_ner import AlbertNER

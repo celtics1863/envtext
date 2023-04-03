@@ -7,12 +7,19 @@ from torchcrf import CRF
 from transformers import BertPreTrainedModel,BertModel
 # from ..tokenizers import WoBertTokenizer
 from ..utils.metrics import metrics_for_ner
+from .ner_base import NERBase
+from multiprocessing import Pool
+
 
 class BertCRF(BertPreTrainedModel):
     def __init__(self, config):
         super(BertCRF, self).__init__(config)
         self.bert = BertModel(config)
         
+        if hasattr(config,'max_length'):
+            self.max_length = config.max_length
+
+
         if hasattr(config,'num_entities'):
             self.num_entities = config.num_entities
             self.num_labels = config.num_entities * 2 +1
@@ -23,16 +30,41 @@ class BertCRF(BertPreTrainedModel):
             else:
                 self.num_entities = 1
                 self.num_labels = 3
+
+        if hasattr(config, "word2vec"): #使用word2vec增强bert输出得特征，解决边界问题
+            self.word2vec = True
+            from ..tokenizers import Word2VecTokenizer
+            self.word2vec_tokenizer = Word2VecTokenizer(max_length=self.max_length,padding=True,encode_character=True)
             
-        if hasattr(config,'lstm'):
+        else:
+            self.word2vec = False
+
+        #半监督
+        if hasattr(config,'semi_supervise'):
+            self.semi_supervise = True
+        else:
+            self.semi_supervise = False
+            
+        if hasattr(config,'lstm'): #使用LSTM
             self.lstm = config.lstm
         else:
             self.lstm = True
             
-        if self.lstm :
+        if self.lstm :    
+            if self.word2vec:
+                self.proj = nn.LSTM(
+                    input_size= self.word2vec_tokenizer.vector_size,  # 768 + vector
+                    hidden_size=config.hidden_size // 2,  # 768
+                    batch_first=True,
+                    num_layers=int(self.lstm),
+                    dropout=0,  # 0.5
+                    bidirectional=True
+                    )
+                # self.proj = nn.Linear(self.word2vec_tokenizer.vector_size, config.hidden_size)
+
             self.bilstm = nn.LSTM(
-                input_size=config.hidden_size,  # 768
-                hidden_size=config.hidden_size,  # 512
+                input_size= config.hidden_size,  # 768 + vector
+                hidden_size=config.hidden_size,  # 768
                 batch_first=True,
                 num_layers=int(self.lstm),
                 dropout=0,  # 0.5
@@ -43,21 +75,15 @@ class BertCRF(BertPreTrainedModel):
         else:
             self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         
-        
-        if hasattr(config,'crf'):
-            self.crf = config.crf
-        else:
-            self.crf = True
-            
-        
-        if self.crf:
-            self.crf = CRF(config.num_labels, batch_first=True)
-        else:
-            self.loss_fn = nn.CrossEntropyLoss()
+
+        #条件随机场
+        self.crf = CRF(config.num_labels, batch_first=True)
+        if hasattr(config, "transition"):
+            self.crf.transitions = nn.Parameter(torch.tensor(config.transition))
 
         self.init_weights()
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None,
+    def forward(self, input_ids, input_text = None, vectors = None , token_type_ids=None, attention_mask=None, labels=None,
               position_ids=None, inputs_embeds=None, head_mask=None):
         outputs = self.bert(input_ids,
                         attention_mask=attention_mask,
@@ -66,9 +92,26 @@ class BertCRF(BertPreTrainedModel):
                         head_mask=head_mask,
                         inputs_embeds=inputs_embeds)
         
-        ##去掉 [CLS] 和 [SEP] token
-        sequence_output = outputs[0][:,1:-1,:]
-        
+        #bert 输出
+        sequence_output = outputs[0]
+        B = sequence_output.shape[0]
+
+        if self.word2vec and vectors is not None:
+            pad_vectors = torch.tensor([self.word2vec_tokenizer.padding_values] * B).reshape(B,1,-1).to(self.device)
+            vectors = torch.cat([pad_vectors,vectors[:,0:-2],pad_vectors],dim=1)
+            # sequence_output = torch.cat([sequence_output,vectors],dim=-1)
+            sequence_output = sequence_output + self.proj(vectors)[0]
+
+        elif self.word2vec and input_text is not None:
+            #B N
+            vectors = self.word2vec_tokenizer(input_text,return_tensors="pt").to(self.device)
+            pad_vectors = torch.tensor([self.word2vec_tokenizer.padding_values] * B).reshape(B,1,-1).to(self.device)
+            vectors = torch.cat([pad_vectors,vectors[:,0:-2],pad_vectors],dim=1)
+            vectors = vectors[:,:sequence_output.shape[1],:]
+            # sequence_output = torch.cat([sequence_output,vectors],dim=-1)
+            sequence_output = sequence_output + self.proj(vectors)[0]
+                
+
         if self.lstm:
             lstm_output, _ = self.bilstm(sequence_output)
             ## 得到判别值
@@ -76,9 +119,13 @@ class BertCRF(BertPreTrainedModel):
         else:
             logits = self.classifier(sequence_output)
         
-        outputs = (logits,)
+        ##去掉 [CLS] 和 [SEP] token
+        # outputs = (logits[:,1:-1,:],)
+        
+
         if labels is not None:
             #处理label长度和logits长度不一致的问题
+            labels = labels.clone() #make a copy
             B,L,C,S = logits.shape[0],logits.shape[1],logits.shape[2],labels.shape[1]
             ## print(B,L,C,S)
             if S > L :
@@ -91,17 +138,20 @@ class BertCRF(BertPreTrainedModel):
             else:
                 loss_mask = labels.gt(-1)
             
-            if self.crf:
-                labels[~loss_mask] = 0
-                loss = self.crf(logits, labels.long(), mask = loss_mask.bool()) * (-1)
-            else:
-                loss = self.loss_fn(logits.reshape(-1,self.num_labels),labels.reshape(-1))
-            
-            outputs = (loss,) + outputs
+            if self.semi_supervise:
+                loss_mask = torch.logical_or(loss_mask,labels == 0)
+                loss_mask[:,0] = True #<cls> token label. For the first time stamp of crf inputs must be true
+                             
+            labels[~loss_mask] = 0
+            loss = self.crf(logits, labels.long() , mask = loss_mask.bool()) * (-1)
+            outputs = (loss, logits)
+        else:
+            labels = torch.tensor(self.crf.decode(logits))
+            outputs = (logits,labels)
 
         return outputs
     
-class BertNER(BertBase):
+class BertNER(NERBase,BertBase):
     '''
     Args:
        path `str`: 
@@ -113,29 +163,28 @@ class BertNER(BertBase):
    Kwargs:
        entities [Optional] `List[int]` or `List[str]`: 默认为None
            命名实体识别问题中实体的种类。
-           命名实体识别问题中与labels/num_labels/num_entities必填一个。
+           命名实体识别问题中与entities/num_entities必设置一个，若否，则默认只有1个实体。
+
+       num_entities [Optional] `int`: 默认None
+           命名实体识别问题中实体的数量。
+           命名实体识别问题中与labels/num_labels/entities必设置一个，若否，则默认只有1个实体。
            实体使用BIO标注，如果n个实体，则有2*n+1个label。
+       
+       ner_encoding [Optional] `str`: 默认BIO
+           目前支持三种编码：
+               BI
+               BIO
+               BIOES
+          
+           如果实体使用BIO标注，如果n个实体，则有2*n+1个label。
            eg:
                O: 不是实体
                B-entity1：entity1的实体开头
                I-entity1：entity1的实体中间
                B-entity2：entity2的实体开头
                I-entity2：entity2的实体中间
-
-       num_entities [Optional] `int`: 默认None
-           命名实体识别问题中实体的数量。
-           命名实体识别问题中与labels/num_labels/entities必填一个。
-           实体使用BIO标注，如果n个实体，则有2*n+1个label。
-   
-       num_labels [Optional]`int`:
-           默认:3
-           标签类别
-       
-       labels [Optional] `List[int]` or `List[str]`: 默认None
-            NER问题中标签的种类。
-            分类问题中和num_labels必须填一个，代表所有的标签。
-            默认为['O','B','I']
-       
+           
+           
        crf  [Optional] `bool`:
            默认:True
            是否使用条件随机场
@@ -144,178 +193,25 @@ class BertNER(BertBase):
            默认:1,代表LSTM的层数为1
            是否使用lstm，设置为0，或None，或False不使用LSTM
         
+       word2vec [Optional] `bool`:
+            默认：False
+            是否使用word2vec得结果增强bert的结果。
+            这种方式会减慢速度，但是会增强模型对边界的识别。
+
        max_length [Optional] `int`: 默认：512
            支持的最大文本长度。
            如果长度超过这个文本，则截断，如果不够，则填充默认值。
     '''
-    def align_config(self):
-        super().align_config()
-        if self.entities:
-            if not self.num_entities:
-                num_entities = len(self.entities)
-            else:
-                num_entities = self.num_entities
-            
-            num_labels = len(self.entities) * 2 +1
-
-            if not self.labels or len(self.labels) != num_labels:
-                labels = ['O']
-                for e in self.entities:
-                    labels.append(f'B-{e}')
-                    labels.append(f'I-{e}')
-            else:
-                labels = self.labels
-
-            self.update_config(num_entities = num_entities,
-                         num_labels = num_labels,
-                         labels = labels)   
-            
-        elif self.num_entities:
-
-            entities = [f'entity-{i}' for i in range(self.num_entities)]
-            
-            num_labels = self.num_entities * 2 +1
-            
-            if not self.labels or len(self.labels) != num_labels:
-                labels = ['O']
-                for e in entities:
-                    labels.append(f'B-{e}')
-                    labels.append(f'I-{e}')
-            else:
-                labels = self.labels
-            
-            self.update_config(
-                         entities = entities,
-                         num_labels = num_labels,
-                         labels = labels
-                         )
-        
-        elif self.labels:
-            num_labels = len(self.labels)
-            if num_labels % 2 == 0:
-                assert 0,"在NER任务中，配置参数labels的长度必须是奇数，可以通过set_attribute()或者初始化传入entities,num_entities或正确的labels进行修改"
-            num_entities = num_labels//2
-            entities = [f'entity-{i}' for i in range(num_entities)]
-            self.update_config(
-                     entities = entities,
-                     num_labels = num_labels,
-                     num_entities = num_entities
-                     )
-            
-        elif self.num_labels > 2:
-            if self.num_labels % 2 == 0:
-                assert 0,"在NER任务中，配置参数num_labels必须是奇数，可以通过set_attribute()或者初始化传入entities,num_entities或正确的num_labels进行修改"
-            num_entities = num_labels//2
-            entities = [f'entity-{i}' for i in range(num_entities)]
-            labels = ['O']
-            for e in entities:
-                labels.append(f'B-{e}')
-                labels.append(f'I-{e}')
-                
-            self.update_config(
-                         entities = entities,
-                         num_entities = num_entities,
-                         labels = labels
-                         )
-
-        else:
-            entities = ['entity']
-            num_entities = 1
-            num_labels = 3
-            labels = ['O','B','I']
-            
-            self.update_config(
-                 entities = entities,
-                num_entities = num_entities,
-                num_labels = num_labels,
-                labels = labels
-            )
-
 
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = BertCRF.from_pretrained(self.model_path,config = self.config)
-        if self.key_metric == 'validation loss':
-            if self.num_entities == 1:
-                self.set_attribute(key_metric = 'f1')
-            else:
-                self.set_attribute(key_metric = 'macro_f1')
-            
-    def postprocess(self,text,logits,print_result = True, save_result = True):
-        logits = torch.tensor(logits)
-        logits = F.softmax(logits,dim=-1)
-        pred = torch.argmax(logits,dim=-1)
-        
-        if print_result:
-            self._report_per_sentence(text,pred,logits)
-        
-        if save_result:
-            self._save_per_sentence_result(text,pred,logits)
-            
-    def _report_per_sentence(self,text,pred,p):
-        text = text.replace(' ','')
-        log = f'text:{text}\n'
-        for i,c in enumerate(pred):
-            if c % 2 == 1: #start B
-                class_id = (c.clone().cpu().item()-1) // 2
-                idx = i+1
-                while idx <= pred.shape[0]:
-                    if idx == len(pred) or pred[idx].item() == 0: #stop I
-                        local_p= torch.max(p[i:idx,:],dim=-1)[0]
-                        s = f'\t pred_word:{text[i:idx]}, entity: {self.entities[class_id]} ,probaility: '
-                        for j in range(idx-i):
-                            s += '{:.2f} '.format(local_p[j].item())
-                        log += s
-                        log += '\n'
-                        break
-                    elif pred[idx].item() == c + 1:
-                        idx += 1
-                    else:
-                        break
+        # if self.key_metric == 'validation loss':
+        if self.num_entities == 1:
+            self.set_attribute(key_metric = 'f1')
+        else:
+            self.set_attribute(key_metric = 'macro_f1')
 
-        print(log)
-     
-    def _save_per_sentence_result(self,text,pred,p):
-        text = text.replace(' ','')
-        labels = []
-        locs = []
-        classes = []
-        probs = []
-        for i,c in enumerate(pred):
-            if c % 2 == 1: #start B
-                class_id = (c.clone().cpu().item()-1) // 2
-                idx = i+1
-                while idx <= pred.shape[0]:
-                    if idx == len(pred) or pred[idx].item() == 0: #stop I
-                        local_p= torch.max(p[i:idx,:],dim=-1)[0]
-                        labels.append(text[i:idx])
-                        locs.append([i,idx-1])
-                        classes.append(self.entities[class_id])
-                        s = ''
-                        for j in range(idx-i):
-                            s += '{:.2f} '.format(local_p[j].item())
-                        probs.append(s)
-                        break
-                    elif pred[idx].item() == c + 1:
-                        idx += 1
-                    else:
-                        break
-        result = {}
-        for idx,(l,loc,c,p) in enumerate(zip(labels,locs,classes,probs)):
-            if idx == 0:
-                result[f'label'] = l
-                result[f'loc'] = loc
-                result[f'entity'] = c
-                result[f'p'] = p
-            else:
-                result[f'label_{idx+1}'] = l
-                result[f'loc_{idx+1}'] = loc
-                result[f'entity_{idx+1}'] = c
-                result[f'p_{idx+1}'] = p
-        
-
-        self.result[text] = result
-        
-    def compute_metrics(self,eval_pred):
-        dic = metrics_for_ner(eval_pred)
-        return dic
+        if self.model.word2vec and self.datasets:
+            for k,v in self.datasets.items():
+                v["vectors"] = self.model.word2vec_tokenizer(v["text"])

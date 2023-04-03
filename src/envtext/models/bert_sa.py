@@ -70,11 +70,10 @@ class BertSA(BertBase):
     def _report_per_sentence(self,text,score):
         log = 'text:{} score: {:.4f} \n '.format(text,score)
         print(log)
-        self.result[text].append(score)
     
     def _save_per_sentence_result(self,text,score):
         result = {
-            'label':':.4f'.format(score)
+            'label':'{:.4f}'.format(score)
         }
         self.result[text] = result
         

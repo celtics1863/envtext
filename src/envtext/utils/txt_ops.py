@@ -10,7 +10,9 @@ def write_txts(path,txts):
         
 def read_txt(path):
     with open(path,"r",encoding = "utf-8") as f:
-        lines = f.readlines()
+        lines = []
+        for line in f.readlines():
+            lines.append(line.strip())
         f.close()
     return lines
 
@@ -27,3 +29,4 @@ def read_txts(pattern,dir):
             print(file)
             print(e)
     return content
+
