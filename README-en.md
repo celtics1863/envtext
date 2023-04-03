@@ -201,7 +201,7 @@ model('[MASK][MASK][MASK][MASK]是各国政府都关心的话题')
 #导出结果
 model.save_result('result.csv')
 ```
-#### 3.2.1 Inference with own rnn model
+#### 3.2.2 Inference with own rnn model
 
 from `directory` with `pytorch_model.bin` import model
 
@@ -291,7 +291,7 @@ class MyBertModel(BertBase):
          pass
 ```
 
-##### 4.1 自定义RNN模型
+##### 4.2 self-defined RNN model
 
 Defining the RNN model is similar.
 Firstly, an LSTM classification model is implemented as follows:
