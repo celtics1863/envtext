@@ -62,6 +62,7 @@ model = AlbertCLS(Config.albert.topic_cls)
 model("在全球气候大会上，气候变化是各国政府都关心的话题")
 ```
 <!-- ![](./fig/topic_albert.html) -->
+
 ![](./fig/topic_albert.png)
 
 
@@ -95,7 +96,7 @@ model = AlbertNER(Config.albert.pos_ner)
 model("在全球气候大会上，气候变化是各国政府都关心的话题")
 ```
 <!-- ![](./fig/pos_albert.svg) -->
-
+![](./fig/pos_albert.png)
 
 #### 2.5 word2vec
 
@@ -127,12 +128,15 @@ With envtext, you can label some samples, train your model, and further use the 
 Currently Supported Model：
 
 | Taskname | Bert models |Albert models | RNNs模型 | Others |
-| ------ | ------ | ------ | ------ | ----- |  ----- |
-| Filling Mask | BertMLM  | ------  |  ------  |
+| ------ | ------ | ------ | ------ | ----- | 
+| Filling Mask | BertMLM  | ------  |  ------  | ----- |
 | classification   | BertCLS | AlbertCLS |   RNNCLS  |  ------  |
 | Sentimental Analysis | BertSA  |  ----    |  RNNSA  |  ------  |
 | MultiChoice   |BertMultiChoice | ----  | RNNMultiChoice | ----- |
 | Namely Entity Recognition | BertNER  | AlbertNER   | RNNNER  | -----    |
+| Nested Namely Entity Recognition | BertGP  | -----   | RNNNER  | -----    |
+| relation classification  | BertRelation  | ----   | ----  | -----    |
+| entity-relation joint extraction | BertTriple  | ----   | ----  | -----    |
 | Word2Vec  |  Bert2vec  |  -----   |----- | Word2Vec |
 
 In addition to text generation tasks, the basic support for most of the NLP tasks.
