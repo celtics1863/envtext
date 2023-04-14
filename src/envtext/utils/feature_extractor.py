@@ -1,5 +1,4 @@
 import jieba
-from LAC import LAC
 from tqdm import tqdm
 from .txt_ops import read_txt
 from .json_ops import write_json
@@ -36,6 +35,7 @@ class EntityFeature:
             self.tokenizer = lambda x:jieba.lcut(x)
         
         elif tokenizer == "lac":
+            from LAC import LAC
             self.lac = LAC()
             self.tokenizer = lambda x: self.lac.run(x)[0] #only use tokens
             

@@ -1,4 +1,10 @@
-from envtext import  BertNER,AlbertNER,Config,CNNCLS,RNNCLS,TFIDFTokenizer,TFIDFCLS,RNNMultiChoice
+from envtext import  BertCLS,BertNER,AlbertNER,Config,CNNCLS,RNNCLS,TFIDFTokenizer,TFIDFCLS,RNNMultiChoice
+
+model = BertCLS(Config.bert.bert_mlm)
+
+model.load_dataset("isClimate")
+model.train(epoch=3,batch_size=4)
+
 # model = BertNER("../../../2022Spring/EnvText/models/pos/",visualizer="pos")
 # model = AlbertNER(Config.albert.pos_ner,visualizer="pos")
 

@@ -1,4 +1,3 @@
-from .wordcloud import WordCloud
 from .entity_visualizer import EntityVisualizer
 from .cls_visualizer import CLSVisualizer
 from .span_visualizer import SpanVisualizer

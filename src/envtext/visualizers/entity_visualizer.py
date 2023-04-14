@@ -18,7 +18,28 @@ class EntityVisualizer(VisualizerBase):
           "bg": 'red',
           "kb_link": ''
             }
-        
+
+        #重新整理标注和文本，前提是words按位置从前至后排列
+        new_words = []
+        new_poses = []
+        new_text = "".join(list(text))
+        for word,pos in zip(words,poses):
+            loc = new_text.find(word)
+            if loc == -1:
+                continue
+            elif loc == 0:
+                new_text = new_text[len(word):]
+                new_words.append(word)
+                new_poses.append(pos)
+            else:
+                new_words.extend(list(new_text[:loc]))
+                new_poses.extend(["" for i in range(loc)])
+                new_words.append(word)
+                new_poses.append(pos)
+                new_text = new_text[loc + len(word):]
+
+
+        #嵌入模板
         for word,pos in zip(words,poses):
             if pos in self.DEFAULT_LABEL_COLORS:
                 param = params.copy()

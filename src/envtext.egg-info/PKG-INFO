@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: envtext
-Version: 0.1.2
+Version: 0.1.3
 Summary: envtext for Chinese texts analysis in Environment domain
 Home-page: https://github.com/celtics1863/envtext
 Author: Bi Huaibin
@@ -46,190 +46,241 @@ License-File: LICENSE
 
 5. :five: 使用transformers接口，支持轻松自定义模型
 
-下一步计划：  
-- [ ] 数据集支持：支持常用**标注工具**数据集  
-    - [ ] 精灵标注助手  
-    - [ ] Doccano  
-    - [ ] universal data annotator
-- [ ] **专题支持**  
-    - [ ] 无监督实体/短语/固定搭配挖掘  
-    - [ ] 气候变化文本分析工具箱  
-    - [ ] 环境领域实体  
-- [ ] 更新文档和案例  
-        
 
 如果您觉得本项目有用或是有帮助到您，麻烦您点击一下右上角的star :star:。您的支持是我们维护项目的最大动力:metal:！
 
 
-# 使用方法
 
-### 1. 安装
+# 快速开始
 
-python环境配置
+## 1. 安装
+
 
 ```bash
 pip install envtext
-
-#国内用户使用清华镜像加速
-pip install envtext -i https://pypi.tuna.tsinghua.edu.cn/simple 
 ```
-由于envtext库依赖于transformers和pytorch，故安装时间比较长，建议等待时喝一杯咖啡:coffee:。
 
 
-### 2. 推理
+## 2. 推理 (without training)
 
-目前支持的模型有：
+支持的预训练模型
+```python
+from envtext import Config
+print(Config.pretrained_models)
+```
 
-| 任务名称 | Bert模型 | RNNs模型 | 其他模型 |
-| ------ | ------ | ------ | ------ |
-| 完型填空 | BertMLM  |  ------  |  ------  |
-|  分类   | BertCLS  |  RNNCLS  |  ------  |
-| 情感分析（回归） | BertSA  |  RNNSA  |  ------  |
-|  多选   |BertMultiChoice | RNNMultiChoice | ----- |
-| 实体识别 | BertNER  | RNNNER  | -----    |
-| 词向量  |  -----  |  -----   | Word2Vec |
+| Task | backbone | model name | number of labels | description |
+| ---- | ---- | ---- | ---- |  ---- |
+| 掩码语言模型 | env-bert | celtics1863/env-bert-chinese| --- | [link](https://huggingface.co/celtics1863/env-bert-chinese) | 
+| 新闻分类 | env-bert | celtics1863/env-news-cls-bert | 8 类别 | [link](https://huggingface.co/celtics1863/env-news-cls-bert)|
+| 论文分类 | env-bert | celtics1863/env-news-cls-bert | 10类别 | [link](https://huggingface.co/celtics1863/env-news-cls-bert) |
+| 政策分类 | env-bert | celtics1863/env-news-cls-bert | 15 类别 | [link](https://huggingface.co/celtics1863/env-news-cls-bert) |
+| 话题分类 | env-bert | celtics1863/env-topic | 63 类别 | [link](https://huggingface.co/celtics1863/env-topic) |
+| 词性/实体/术语识别 | env-bert | celtics1863/pos-bert | 41 类别 | [link](https://huggingface.co/celtics1863/pos-bert) |
+| 掩码语言模型 | env-albert | celtics1863/env-albert-chinese| --- | [link](https://huggingface.co/celtics1863/env-albert-chinese) |
+| 新闻分类 | env-albert | celtics1863/env-news-cls-albert | 8 类别 | [link](https://huggingface.co/celtics1863/env-news-cls-albert) |
+| 论文分类 | env-albert | celtics1863/env-paper-cls-albert | 10 类别 | [link](https://huggingface.co/celtics1863/env-paper-cls-albert) |
+| 政策分类 | env-albert | celtics1863/env-policy-cls-albert | 15 类别 | [link](https://huggingface.co/celtics1863/env-policy-cls-albert) |
+| 话题分类 | env-albert | celtics1863/env-topic | 63 类别 | [link](https://huggingface.co/celtics1863/env-topic-albert) |
+| 词性/实体/术语识别 | env-albert | celtics1863/pos-ner-albert | 41 类别 | [link](https://huggingface.co/celtics1863/pos-ner-albert) |
+| 词向量 | word2vec | word2vec | ---- | [link](https://links.jianshu.com/go?to=https%3A%2F%2Farxiv.org%2Fabs%2F1301.3781v3) |
+| 词向量 | env-bert | bert2vec | ---- | [link](https://huggingface.co/celtics1863/env-bert-chinese) |
 
-除文本生成任务外，基本支持绝大部分NLP任务。
-
-Bert 支持环境领域大规模预训练模型`envBert`，也支持其他huggingface transformer的Bert模型。
-
-RNNs模型包括`LSTM`,`GRU`,`RNN`三种，可以选择使用环境领域预训练的词向量初始化，也可以使用Onehot编码初始化。
 
 
-#### 2.1 使用Bert
+#### 2.1 环境话题分类
+```python
+from envtext import AlbertCLS,Config
+model = AlbertCLS(Config.albert.topic_cls)
+model("在全球气候大会上，气候变化是各国政府都关心的话题")
+```
+<!-- ![](./fig/topic_albert.html) -->
 
-由于bert模型较大，建议从huggingface transformer上预先下载模型权重，
-或者从我们提供的百度网盘链接上下载权重，保存到本地，方便使用。
+![](./fig/topic_albert.png)
 
-百度网盘链接：  
-链接：[百度网盘 envBert 模型](https://pan.baidu.com/s/1KNE5JnUoulLgVK9yW5WtAw)
-提取码：lfwm 
+
+#### 2.2 环境新闻分类
 
 ```python
-#导入完形填空模型(masked language model)
-from envtext.models import BertMLM
-model = BertMLM('celtics1863/env-bert-chinese')
-
-#进行预测
-model('[MASK][MASK][MASK][MASK]是各国政府都关心的话题')
-
-
-#导出结果
-model.save_result('result.csv')
+from envtext import AlbertCLS,Config
+model = AlbertCLS(Config.albert.news_cls)
+model("清洁能源基地建设对国家能源安全具有战略支撑作用。打造高质量的清洁能源基地的同时，也面临着一系列挑战，比如如何持续降低光储系统的度电成本、如何通过数字化的手段进一步提升运营与运维效率，如何更有效地提升光储系统的安全防护水平、如何在高比例新能源条件下实现稳定并网与消纳等。")
 ```
-#### 2.2 使用RNN
+
+<!-- ![](./fig/news_albert.html) -->
+![](./fig/news_albert.png)
+
+#### 2.3 环境政策分类
 
 ```python
-from envtext.models import RNNCLS
-
-model = RNNCLS('本地pytorch_model.bin所在文件夹')
-
-#进行预测
-model('气候变化是各国政府都关心的话题')
-
-#导出结果
-model.save_result('result.csv')
+from envtext import AlbertCLS,Config
+model = AlbertCLS(Config.albert.news_cls)
+model("两个《办法》适用于行政主管部门在依法行使监督管理职责中，对建设用地和农用地土壤污染责任人不明确或者存在争议的情况下，开展的土壤污染责任人认定活动。这是当前土壤污染责任人认定工作的重点。涉及民事纠纷的责任人认定应当依据民事法律予以确定，不适用本《办法》。")
 ```
+<!-- ![](./fig/policy_albert.html) -->
+![](./fig/policy_albert.png)
 
-#### 2.3 使用word2vec
 
-envtext自带长度为64的预训练词向量。
+#### 2.4 环境术语/实体/词性识别
+
+```python
+from envtext import AlbertNER,Config
+model = AlbertNER(Config.albert.pos_ner)
+model("在全球气候大会上，气候变化是各国政府都关心的话题")
+```
+<!-- ![](./fig/pos_albert.svg) -->
+![](./fig/pos_albert.png)
+
+#### 2.5 word2vec词向量
+
 ```python
 from envtext.models import load_word2vec
-
 model = load_word2vec()
-
 model.most_similar('环境保护')
 ```
+results:
+```bash
+[('环保', 0.8425659537315369),
+ ('生态环境保护', 0.7966809868812561),
+ ('土壤环境保护', 0.7429764270782471),
+ ('环境污染防治', 0.7383896708488464),
+ ('生态保护', 0.6929160952568054),
+ ('大气环境保护', 0.6914916634559631),
+ ('应对气候变化', 0.6642681956291199),
+ ('水污染防治', 0.6642411947250366),
+ ('大气污染防治', 0.6606612801551819),
+ ('环境管理', 0.6518533825874329)]
+```
 
-### 3. 训练
 
-##### 3.1 Bert训练
+#### 2.6 env-bert词向量
 
 ```python
-#导入分类模型(classification)
+from envtext import Bert2Vec,Config
+model = Bert2Vec(Config.bert.mlm)
+model.add_words(
+    [
+        "环境污染",
+        "水污染",
+        "大气污染",
+        "北京市",
+        "上海市",
+        "兰州市"
+    ])
+model.most_similar("郑州市")
+```
+results:
+```bash
+[('兰州市', 0.8755860328674316),
+ ('北京市', 0.7335232496261597),
+ ('上海市', 0.7241109013557434),
+ ('大气污染', 0.471857488155365),
+ ('水污染', 0.4557272493839264)]
+```
+
+
+## 3. 训练并推理
+
+使用envtext，您可以标记一些示例，训练您的模型，并进一步使用模型来推断其余的文本。
+
+目前支持的模型：
+
+| Taskname | Bert models |Albert models | RNNs models | Others |
+| ------ | ------ | ------ | ------ | ----- | 
+| 完型填空 | BertMLM  | ------  |  ------  | ----- |
+| 分类   | BertCLS | AlbertCLS |   RNNCLS  |  CNNCLS,TFIDFCLS  |
+| 情感分析 | BertSA  |  ----    |  RNNSA  |  ------  |
+| 多选   |BertMultiChoice | AlbertMultiChoice  | RNNMultiChoice | ----- |
+| 命名实体识别 | BertNER  | AlbertNER   | RNNNER  | -----    |
+| 嵌套命名实体识别 | BertGP  | -----   | -----  | -----    |
+| 关系分类  | BertRelation  | ----   | ----  | -----    |
+| 实体关系联合抽取 | BertTriple  | ----   | ----  | -----    |
+| 词向量  |  Bert2vec  |  -----   |----- | Word2Vec |
+
+除了文本生成任务外，基本支持大部分的NLP任务。
+
+Bert and Albert支持环境文本中的大规模预训练模型' envBert '和' envalbert '，以及huggingface transformer中的其他Bert模型。
+
+RNN模型由“LSTM”、“GRU”和“RNN”组成，可以用环境域预训练的词向量进行初始化，也可以用Onehot编码进行初始化。
+
+### 3.1 训练
+
+##### 3.1 Bert/albert 模型训练
+
+```python
+#导入bert模型(eg. 分类模型)
 from envtext.models import BertCLS
 model = BertCLS('celtics1863/env-bert-chinese')
 
-# # 使用自定义数据集
-# model.load_dataset('数据集位置',task = 'cls',format = '数据集格式')
-# #使用自带的二分类数据集：
+# # 如果使用自定义的数据集
+# model.load_dataset(file_path,task = 'cls',format = 'datasets-format')
+# # 使用envtext中默认的数据集
 model.load_dataset('isclimate')
 
 #模型训练
 model.train()
 
-
 #模型保存
-model.save_model('classification') #输入待保存的文件夹
+model.save_model('classification') #input directory
 ```
 
-或者：
+##### 3.2 RNN training
 
 ```python
-#导入分类模型(classification)
-from envtext.models import BertCLS
-from envtext.data.utils import load_dataset
-
-# # 使用自定义数据集
-# datasets,config = load_dataset('数据集位置',task = 'cls',format = '数据集格式')
-# #使用自带的二分类数据集：
-datasets,config = load_dataset('isclimate')
-
-model = BertCLS('celtics1863/env-bert-chinese',config)
-
-#模型训练
-model.train(datasets)
-
-#模型保存
-model.save_model('classification') #输入待保存的文件夹
-```
-
-##### 3.2 RNN训练
-
-```python
-#导入分类模型(classification)
+#导入 rnn model(eg. 分类模型)
 from envtext.models import RNNCLS
 model = RNNCLS()
 
-# # 使用自定义数据集
-# model.load_dataset('数据集位置',task = 'cls',format = '数据集格式')
-# # 使用自带的二分类数据集：
+# # 使用自定义的模型
+# model.load_dataset(file_path,task = 'cls',format = 'datasets-format')
+# # 使用EnvText自带的数据集
 model.load_dataset('isclimate')
 
 #模型训练
 model.train()
 
-
-#模型保存
+#保存模型
 model.save_model('classification') #输入待保存的文件夹
 ```
-或者
+
+
+### 3.2 使用自定义的模型推理
+
+#### 3.2.1 使用自定义bert模型推理
+```python
+#从文件夹导入莫小仙
+from envtext.models import BertMLM
+model = BertMLM('celtics1863/env-bert-chinese')
+
+#预测结果，可以输入 str 或 List[str]
+model('[MASK][MASK][MASK][MASK]是各国政府都关心的话题')
+
+#导出结果
+model.save_result('result.csv')
+```
+#### 3.2.2 使用RNN模型推理
+
+从 含有`pytorch_model.bin`的`文件` 推理
 
 ```python
-#导入分类模型(classification)
 from envtext.models import RNNCLS
-from envtext.data.utils import load_dataset
 
-# # 使用自定义数据集
-# datasets,config = load_dataset('数据集位置',task = 'cls',format = '数据集格式')
-# #使用自带的二分类数据集：
-datasets,config = load_dataset('isclimate')
+model = RNNCLS('local directory')
 
-model = RNNCLS(config=config)
+#predict
+model('气候变化是各国政府都关心的话题')
 
-#模型训练
-model.train(datasets)
-
-#模型保存
-model.save_model('classification') #输入待保存的文件夹
+#save result
+model.save_result('result.csv')
 ```
 
 
 ### 4. 自定义模型
 
-##### 4.1 自定义Bert模型
-首先自定义一个回归任务的Bert模型
+##### 4.1 自定义bert模型
+
+从bert模型定义一个回归器
+
 ```python
 from envtext.models.bert_base import BertBase
 import torch
@@ -238,9 +289,9 @@ from transformers import BertPreTrainedModel,BertModel
 class MyBert(BertPreTrainedModel):
     def __init__(self, config):
         super(MyBert, self).__init__(config)
-        self.bert = BertModel(config) #bert模型
-        self.regressor = torch.nn.Linear(config.hidden_size, 1) #回归器
-        self.loss = torch.nn.MSELoss() #损失函数
+        self.bert = BertModel(config) #bert model
+        self.regressor = torch.nn.Linear(config.hidden_size, 1) #regressor
+        self.loss = torch.nn.MSELoss() #loss function
         
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None,
               position_ids=None, inputs_embeds=None, head_mask=None):
@@ -250,58 +301,58 @@ class MyBert(BertPreTrainedModel):
                             position_ids=position_ids,
                             head_mask=head_mask,
                             inputs_embeds=inputs_embeds)
-        #使用[CLS] token
+        #use[CLS] token
         cls_output = outputs[0][:,0,:] 
 
-        # 得到判别值
+        #get logits 
         logits = self.regressor(cls_output)
 
         outputs = (logits,)
         
-        #这里需要与bert的接口保持一致，在有labels输入的情况下，返回(loss,logits)，否则返回(logits,)
+        #这里需要与bert的接口保持一致
         if labels is not None: 
             loss = self.loss(logits.squeeze(),labels)
             outputs = (loss,) + outputs
         return outputs
 
 ```
-将模型与envtext的接口对接
+对齐EnvText的接口：
 
 ```python
 class MyBertModel(BertBase):
-    #重写初始化函数
+    #Rewrite the initialization function
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
         self.model = MyBert.from_pretrained(self.model_path)
 
-    #[Optional] 可选 重写后处理预测结果的函数
-    def postprocess(self,text, logits, print_result = True ,save_result = True):     
+    #[Optional] 重写预处理函数
+    def preprocess(self,text, logits, **kwargs):     
+        text = text.replace("\n", "")
+        return text
+
+    #[Optional] 重写后处理函数
+    def postprocess(self,text, logits, **kwargs):      
         logits = logits.squeeze()
-        if print_result:
-            #打印结果
-            print(logits)
-        
-        if save_result:
-            #保存结果
-            self.result[text] = logits
+        return logits.tolist()
             
-     #[Optional] 可选 重新计算判别值函数，用于训练时提供除loss外的metrics信息
+     #[Optional] 在训练时会调用，计算除loss以外的metric
      def compute_metrics(eval_pred)
          from envtext.utils.metrics import metrics_for_reg
          return metrics_for_reg(eval_pred)
      
-     #[Optional] 可选 用于对齐config中的参数，
-     #因为有的时候需要接受多种参数的输入，例如分类任务时可以接受类别数量，也可以接受类别的列表，这时候可以通过这个接口对齐。
+     #[Optional] Optional to align parameters in config,
+     #对齐参数配置
      def align_config(self):
          super().align_config()
          ##可以使用self.update_config() 或 self.set_attribute() 接口重新设置config
          pass
 ```
 
-##### 4.1 自定义RNN模型
+##### 4.2 self-defined RNN model
 
-定义RNN模型也是类似的。  
-先实现一个LSTM分类模型如下：
+RNN模型的定义与此类似。  
+
+首先，实现LSTM分类模型，具体如下:
 
 ```python
 from torch import nn
@@ -315,44 +366,39 @@ class MyRNN(nn.Module):
         X,_ = self.rnn(X)
         logits = self.classifier(X)
         
-        #对齐接口，仍然需要在labels存在的情况下输出(loss,logits)，不存在的情况下输出(logits,)
+        #Align interfaces, still need to output with labels present (loss,logits) and without labels (logits,)
         if labels is not None:
             loss = self.loss_fn(logits,labels)
             return (loss,logits) 
         return (logits,)
 ```
+对齐EnvText的接口
 
-再将模型与envtext接口对接，
 ```python
 import numpy as np
 class MyRNNModel(BertBase):
-    #重写初始化函数
+    #Rewrite the initialization function
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs) #保持不变
         self.model = MyRNN.from_pretrained(self.model_path) 
 
-    #[Optional] 可选 重写后处理预测结果的函数
+    #[Optional] rewrite the function that postprocesses the prediction result
     def postprocess(self,text, logits, print_result = True ,save_result = True):     
         pred = np.argmax(logits,axis = -1)
-        if print_result:
-            #打印结果
-            print(pred)
-        
-        if save_result:
-            #保存结果
-            self.result[text] = pred
+        return pred.tolist()
             
-    #[Optional] 可选 重写metrics，增加loss以外的metric, 用于训练
+    #[Optional] rewrite metrics，add metric besides loss, for training
     def compute_metrics(eval_pred):
         return {} #返回一个dict
         
-    #[Optional] 可选 重写align_config，对齐config参数
+    #[Optional] rewrite align_config
+    #Because there are times when you need to accept multiple inputs, such as the number of categories or a list of categories when classifying tasks, you can use this interface for alignment.
     def align_config(self):
         super().align_config()
-        pass
 ```
 
-更详细的教程，请参见我们的案例 [jupyter notebooks]('jupyter_notebooks')
+对于更详细的教程，案例将添加在[jupyter notebooks]('notebooks')
+
 
 ### 5. 使用建议
 

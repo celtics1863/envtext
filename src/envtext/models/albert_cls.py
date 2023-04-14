@@ -45,7 +45,6 @@ class AlbertCLSModel(AlbertPreTrainedModel):
 
         outputs = (logits,)
         if labels is not None:
-            labels = labels.nonzero()[:,1]
             loss = self.loss(logits,labels.long())
             outputs = (loss,) + outputs
             return outputs

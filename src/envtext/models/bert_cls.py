@@ -45,10 +45,6 @@ class BertCLSModel(BertPreTrainedModel):
 
         outputs = (logits,)
         if labels is not None:
-            print(labels.shape,logits.shape)
-            labels = labels.nonzero()[:,1]
-            print(labels.shape,logits.shape)
-            print(labels)
             loss = self.loss(logits,labels.long())
             outputs = (loss,) + outputs
         return outputs
