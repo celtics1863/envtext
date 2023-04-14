@@ -25,6 +25,8 @@ setuptools.setup(
         'pandas',
         'torch',
         'transformers',
+        "einops",
+        "palettable",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

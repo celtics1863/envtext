@@ -2,21 +2,21 @@ import json
 from ntpath import join
 import os
 from sys import path
-from typing import Match, Pattern
+from typing import *
 import re
 
-def read_json(path):
+def read_json(path: os.PathLike):
     f = open(path, 'r', encoding='utf-8')
     d = json.load(f)
     return d
 
-def read_jsonL(path):
+def read_jsonL(path: os.PathLike):
     f = open(path, 'r', encoding='utf-8')
     for idx,line in enumerate(f):
         js = json.loads(line)
         yield js
 
-def read_jsons(pattern,dir):
+def read_jsons(pattern ,dir:os.PathLike):
     files = [os.path.join(dir,file) for file in os.listdir(dir) if re.match(pattern,file) is not None]
     content = []
     for file in files:
@@ -35,6 +35,19 @@ def read_jsons(pattern,dir):
     
     return content
     # files = []
+
+def write_jsonL(path : os.PathLike,js_list : List[dict],mode = "w"):
+    '''
+    path: path to json
+    js_list: list of json files
+    '''
+    f = open(path, mode, encoding='utf-8')
+    for js in js_list:
+        json.dump(js,f,ensure_ascii=False)
+        f.write("\n")
+    f.close()
+
+
 def write_jsons(dir,list_of_dic,max_num = 1000):
     if not os.path.exists(dir):
         os.makedirs(dir)

@@ -169,7 +169,7 @@ class Bert2Vec:
 
     def most_similar(self,text,topn = 5):
         if text not in self.wv:
-            vec = self.get_vec(text)
+            vec = self.get_vector(text)
         else:
             vec = self.wv[text]
         return self.wv.most_similar(vec,topn=topn)
