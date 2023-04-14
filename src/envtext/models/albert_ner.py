@@ -214,7 +214,6 @@ class AlbertNER(NERBase,BertBase):
 
     def initialize_bert(self,path = None,config = None,**kwargs):
         super().initialize_bert(path,config,**kwargs)
-        print(self.config)
         self.model = AlbertCRF.from_pretrained(self.model_path,config = self.config,ignore_mismatched_sizes=True)
         # if self.key_metric == 'validation loss':
         if self.num_entities == 1:

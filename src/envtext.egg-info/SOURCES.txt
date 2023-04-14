@@ -1,3 +1,4 @@
+LICENSE
 MANIFEST.in
 README-en.md
 README.md
@@ -33,6 +34,7 @@ src/envtext/files/vocab/onehot_vocab.txt
 src/envtext/files/vocab/stop_words.txt
 src/envtext/models/__init__.py
 src/envtext/models/albert_cls.py
+src/envtext/models/albert_multichoice.py
 src/envtext/models/albert_ner.py
 src/envtext/models/bert2vec.py
 src/envtext/models/bert_base.py
@@ -46,6 +48,8 @@ src/envtext/models/bert_sa.py
 src/envtext/models/bert_span.py
 src/envtext/models/bert_triple.py
 src/envtext/models/cls_base.py
+src/envtext/models/cnn_cls.py
+src/envtext/models/cnn_discourse_cls.py
 src/envtext/models/dp_base.py
 src/envtext/models/gp_base.py
 src/envtext/models/mc_base.py
@@ -59,6 +63,7 @@ src/envtext/models/rnn_ner.py
 src/envtext/models/rnn_sa.py
 src/envtext/models/sim2vec.py
 src/envtext/models/span_base.py
+src/envtext/models/tfidf_cls.py
 src/envtext/models/triple_base.py
 src/envtext/models/word2vec.py
 src/envtext/models/__pycache__/word2vec.cpython-38.pyc

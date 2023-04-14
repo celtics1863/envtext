@@ -36,12 +36,12 @@ def read_jsons(pattern ,dir:os.PathLike):
     return content
     # files = []
 
-def write_jsonL(path : os.PathLike,js_list : List[dict]):
+def write_jsonL(path : os.PathLike,js_list : List[dict],mode = "w"):
     '''
     path: path to json
     js_list: list of json files
     '''
-    f = open(path, 'a', encoding='utf-8')
+    f = open(path, mode, encoding='utf-8')
     for js in js_list:
         json.dump(js,f,ensure_ascii=False)
         f.write("\n")

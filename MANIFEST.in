@@ -1,2 +1,3 @@
 include *.md
 recursive-include src *.txt *.py word2vec* *.vocab *.json *.csv
+include src/envtext/utils/__init__.py

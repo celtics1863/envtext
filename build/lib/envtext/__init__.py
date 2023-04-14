@@ -36,6 +36,7 @@ model.most_similar('环境保护')
 __version__ = '0.0.1'
 __license__ = 'Apache Software License'
 
+
 from .models import *
 from .tokenizers import *
 from .visualizers import *

@@ -1,4 +1,3 @@
-from envtext.models import load_word2vec
 from gensim.models import KeyedVectors
 import numpy as np
 from typing import *

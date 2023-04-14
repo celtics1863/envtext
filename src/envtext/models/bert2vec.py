@@ -1,4 +1,3 @@
-from envtext.models import load_word2vec
 from gensim.models import KeyedVectors
 import numpy as np
 from typing import *
@@ -170,7 +169,7 @@ class Bert2Vec:
 
     def most_similar(self,text,topn = 5):
         if text not in self.wv:
-            vec = self.get_vec(text)
+            vec = self.get_vector(text)
         else:
             vec = self.wv[text]
         return self.wv.most_similar(vec,topn=topn)

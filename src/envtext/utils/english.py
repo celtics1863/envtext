@@ -1,10 +1,7 @@
-
-
 def _wash_label(label):
     return label.strip() \
              .replace('  ','') \
-             .lower() \
-
+             .lower()
 
 def _is_english_char(ch):
     if 97 <= ord(ch) <= 122 or 65 <= ord(ch)<= 90:
@@ -23,4 +20,3 @@ def _is_english_char_upper(ch):
         return True
     else:
         return False
-

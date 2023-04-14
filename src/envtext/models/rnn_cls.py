@@ -8,7 +8,7 @@ from .cls_base import CLSBase
 
 
 class RNNCLSModel(nn.Module):
-    def __init__(self,length,token_size,hidden_size ,num_layers, num_classes, onehot_embed = False, embed_size = None  , model_name ='lstm'):
+    def __init__(self,length,token_size,hidden_size ,num_layers, num_classes, onehot_embed = False, embed_size = None  , model_name ='lstm',**kwargs):
         super().__init__()
         self.onehot_embed = onehot_embed
         if onehot_embed:
@@ -58,7 +58,8 @@ class RNNCLS(CLSBase,RNNBase):
                          self.config.num_labels,
                          self.config.onehot_embed,
                          self.config.embed_size,
-                         self.config.model_name
+                         self.config.model_name,
+                         **kwargs
                         )
         self.model = self.model.to(self.device)
         

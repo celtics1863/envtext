@@ -46,9 +46,11 @@ class RNNMultiCLSModel(nn.Module):
         logits = self.fc(X)
         outputs = (logits,)
         if labels is not None:
-            loss = self.loss_fn(logits,labels)
+            loss = self.loss(logits,labels)
             outputs = (loss,) + outputs
-        return outputs
+            return outputs
+        else:
+            return logits
     
 class RNNMultiChoice(MCBase,RNNBase):
     def initialize_rnn(self,path = None,config = None,**Kwargs):
@@ -69,11 +71,3 @@ class RNNMultiChoice(MCBase,RNNBase):
             else:
                 self.set_attribute(key_metric = 'macro_f1')
     
-    def postprocess(self,text, logits ,print_result = True, save_result = True):
-        preds, = np.nonzero(logits > 0.5)
-        if print_result:
-            self._report_per_sentence(text,preds,logits)
-        
-        if save_result:
-            self._save_per_sentence_result(text,preds,logits)
-            

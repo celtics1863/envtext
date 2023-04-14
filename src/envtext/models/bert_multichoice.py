@@ -36,7 +36,9 @@ class BertMultiCLS(BertPreTrainedModel):
         if labels is not None:
             loss = self.loss(logits,labels.float())
             outputs = (loss,) + outputs
-        return outputs
+            return outputs
+        else:
+            return logits
 
 
 class BertMultiChoice(MCBase,BertBase):

@@ -2,15 +2,16 @@ from .model_base import ModelBase
 import torch
 from torch.utils.data import TensorDataset,DataLoader
 from transformers.configuration_utils import PretrainedConfig
-from ..tokenizers import Word2VecTokenizer,OnehotTokenizer
+from ..tokenizers import Word2VecTokenizer,OnehotTokenizer,TFIDFTokenizer
 from tqdm import tqdm
 from collections import defaultdict
 import numpy as np
 import os
 
 class RNNBase(ModelBase):
-    def __init__(self,path = None, config = None,model_name = 'lstm', labels = [],num_labels = 0, entities = [],num_entities = 0, \
-                     max_length = 128, hidden_size = 512 ,num_layers = 3, embed_size = 512, token_method = 'word2vec', **kwargs):
+    def __init__(self,path = None, config = None,model_name = 'lstm', labels = [],num_labels = 0, entities = [],num_entities = 0, ner_encoding = 'BIO' , \
+                     max_length = 128, hidden_size = 512 ,num_layers = 3, onehot_embed = False, embed_size = 512, token_method = 'word2vec', \
+                    word2vec_path = None,vocab_path = None, truncation = True,padding=True, remake_vocab= True,**kwargs):
         '''
         RNN模型
         
@@ -44,7 +45,7 @@ class RNNBase(ModelBase):
                 
            entities [Optional] `List[int]` or `List[str]`: 默认为None
                命名实体识别问题中实体的种类。
-               命名实体识别问题中与labels/num_labels/num_entities必填一个。
+               命名实体识别问题中与entities/num_entities必填一个。
                实体使用BIO标注，如果n个实体，则有2*n+1个label。
                eg:
                    O: 不是实体
@@ -68,6 +69,9 @@ class RNNBase(ModelBase):
            num_layers [Optional] `int`: 默认：3
                RNN模型的层数
                
+            onehot_embed[Optional] `bool`: 默认：False
+                使用onehot编码时会自动设置为True，在模型中添加一层embedding layer
+
            embed_size [Optional] `int`: 默认：512
                模型嵌入向量的大小。
                只有当token_method == onehot时会启用。
@@ -84,28 +88,42 @@ class RNNBase(ModelBase):
         self.optim = None
         self.schedule = None
         self.model = None
-        self.update_config(
-            model_name = model_name,
-            labels = labels,
-            num_labels = num_labels,
-            entities = entities,
-            num_entities = entities,
-            max_length = max_length, 
-            hidden_size = hidden_size,
-            num_layers = num_layers, 
-            embed_size = embed_size,
-            token_method = token_method
-        )
-        self.update_config(kwargs)
-        self.initialize_config()
-        self.initialize_tokenizer()
-        self.initialize_rnn()
+        
+        
+
+        if path is None:
+            self.update_config(
+                model_name = model_name,
+                labels = labels,
+                num_labels = num_labels,
+                entities = entities,
+                num_entities = entities,
+                ner_encoding = ner_encoding,
+                max_length = max_length, 
+                hidden_size = hidden_size,
+                num_layers = num_layers, 
+                onehot_embed = onehot_embed,
+                embed_size = embed_size,
+                token_method = token_method,
+                word2vec_path = word2vec_path,
+                vocab_path = vocab_path,
+                truncation = truncation,
+                padding = padding,
+                remake_vocab = remake_vocab,
+                **kwargs
+            )
+
+        self.initialize_config(path = path, **kwargs)
+
+        self.initialize_tokenizer(path = path,**kwargs)
+
+        self.initialize_rnn(path=path,**kwargs)
         
         if self.model:
             self.model = self.model.to(self.device)
         
     
-    def initialize_tokenizer(self,token_method = None):
+    def initialize_tokenizer(self,path = None,**kwargs):
         '''
         初始化tokenizer:
        
@@ -115,23 +133,26 @@ class RNNBase(ModelBase):
                     'word2vec': 词向量
                     'onehot': onehot向量
         '''
-        if token_method is not None:
-            self.update_config(token_method = token_method)
+        self.update_config(**kwargs)        
         
-        if self.max_length is None :
-            self.update_config(max_length = 128)
-        
-        if self.token_method == 'word2vec' :
-            self.tokenizer = Word2VecTokenizer(max_length = 128,padding=True,truncation=True) 
-            self.update_config(embed_size = None)
-            
-        elif self.token_method == 'onhot':
-            self.tokenizer = OnehotTokenizer(max_length = 128,padding=True,truncation=True) 
+        vocab_path = self.config.vocab_path
+        if not vocab_path and path:
+            if "vocab.txt" in os.listdir(path):
+                vocab_path = os.path.join(path,"vocab.txt")
+
+        if self.token_method == "onehot":
+            self.tokenizer = OnehotTokenizer(max_length = self.max_length,padding=self.config.padding,truncation=self.config.truncation,vocab_path= vocab_path) 
+        elif self.token_method == "tf-idf":
+            self.tokenizer = TFIDFTokenizer(max_length = self.max_length,padding=self.config.padding,truncation=self.config.truncation,vocab_path= vocab_path,split = self.config.split)
         else:
-            self.update_config(token_method = 'word2vec')
-            self.tokenizer = Word2VecTokenizer(max_length = 128,padding=True,truncation=True) 
+            self.update_config(token_method = "word2vec")
+            self.tokenizer = Word2VecTokenizer(max_length = self.max_length,padding=True,truncation=True,word2vec_path=self.config.word2vec_path) 
         
-    def initialize_config(self,path = None):
+
+        if self.token_method == "onehot":
+            self.set_attribute(onehot_embed = True)
+        
+    def initialize_config(self,path = None, **kwargs):
         '''
         初始化配置参数config
          
@@ -141,9 +162,10 @@ class RNNBase(ModelBase):
                  如果path不存在，则初始化一个空的PretrainedConfig()
         '''
         if path is not None:
-            config = PretrainedConfig.from_pretrain(path)
-            self.update_config(config)
-        
+            config = PretrainedConfig.from_pretrained(path)
+            self.config.update(config)
+            
+        self.config.update(kwargs)
     
     def align_config(self):
         '''
@@ -151,6 +173,9 @@ class RNNBase(ModelBase):
         '''
         pass
     
+
+
+
     def initialize_rnn(self,path = None,config = None,**kwargs):
         '''
         需要继承之后重新实现
@@ -162,8 +187,12 @@ class RNNBase(ModelBase):
         if path is not None:
             if os.path.exists(os.path.join(path,'pytorch_model.bin')):
                 self.load(path)
-                print("RNN模型导入成功")
-        pass
+
+        if self.datasets and self.token_method in ["onehot","tf-idf"] and self.config.remake_vocab:
+            for k,v in self.datasets.items():
+                import re
+                lines =[re.sub("\s","",vv) for vv in v["text"]]
+                self.tokenizer.make_vocab(lines)
 
     
     def update_model_path(self,path):
@@ -327,7 +356,7 @@ class RNNBase(ModelBase):
         if os.path.exists(os.path.join(path,'pytorch_model.bin')):
             self.model = torch.load(os.path.join(path,'pytorch_model.bin'))
             self.model = self.model.to(self.device)
-            print("rnn模型导入成功")
+            print("RNN模型导入成功")
         else:
             print("请输入正确的文件夹，确保文件夹里面含有pytorch_model.bin文件")
         
@@ -340,13 +369,11 @@ class RNNBase(ModelBase):
         for k,v in report.items():
             self.valid_reports[k].append(v)
             
-    def _tokenizer_for_training(self,texts, des = "Tokenizing进度"):
-        bar = tqdm(texts)
-        bar.set_description(des)
+    def _tokenizer_for_training(self,texts, desc = "Tokenizing进度"):
         tokens = []
-        for text in bar:
+        for text in tqdm(texts,desc = desc):
             tokens.append(self.tokenizer(text)[0])
-        tokens = torch.tensor(tokens)
+        tokens = torch.from_numpy(np.array(tokens,dtype=np.float32))
         return tokens
     
     def _train_per_step(self,train_dataloader):
@@ -409,71 +436,17 @@ class RNNBase(ModelBase):
 
     def _inference_per_step(self,dataloader):
         self.model.eval()
-        bar = tqdm(dataloader)
-        bar.set_description("正在 Inference ...")
         preds = []
-        for X in bar:
+        for X in tqdm(dataloader,desc="正在 Inference ..."):
             X = X.to(self.device)
             with torch.no_grad():
                 predict = self.model(X)[0]
             preds.append(predict.clone().detach().cpu().numpy())
             
         preds = np.concatenate(preds,axis = 0)
-        return preds
+        return preds    
     
-    def _raw_report(self,dic):
-        keys = list(dic.keys())
-        if isinstance(dic[keys[0]],list):
-            report = '\t  \t'
-            for i in range(1,len(dic[keys[0]])+1):
-                report += f'Epoch{i} \t'
-            report += '\n'
-
-            for k,values in dic.items():
-                report += f'{k}: \t'
-                for v in values:
-                    report += '{:.4f} \t'.format(v)
-                report += '\n'
-        else:
-            report = ''
-            for k,v in dic.items():
-                report += '{} \t : {:.4f} \t \n'.format(k,v)
-        print(report)
-                                 
-    def _ipython_report(self,dic):
-        markdown = ''
-        markdown += '|'
-        for k,v in dic.items():
-            markdown += f'{k.capitalize()}|'
-        markdown += '  \n'
-        markdown += '|'
-        for k,v in dic.items():
-            markdown += '---|'
-        markdown += '  \n'
-
-        keys = list(dic.keys())
-        if isinstance(dic[keys[0]],list):
-            for values in zip(*dic.values()):
-                markdown += '|'
-                for v in values:
-                    markdown += '{:.4f}|'.format(v)
-                markdown += '|  \n'
-        else:
-            markdown += '|'
-            for k,v in dic.items():
-                markdown += '{:.4f}|'.format(v)
-            markdown += '  \n'
-            
-        from IPython.display import display_markdown
-        display_markdown(markdown,raw = True)
-
-    def _report(self,dic):
-        try:
-            self._ipython_report(dic)
-        except:
-            self._raw_report(dic)
-    
-    
+    @torch.no_grad()
     def inference(self, texts = None, batch_size = 2):
         '''
         推理数据集，更快的速度，更小的cpu依赖，建议大规模文本推理时使用。
@@ -489,17 +462,15 @@ class RNNBase(ModelBase):
         self.model = self.model.to(self.device)
         
         #准备数据集
-        input_ids = self._tokenizer_for_training(texts,des = "推理 Tokenizing 进度")
+        input_ids = self._tokenizer_for_training(texts,dece = "推理 Tokenizing 进度")
         dataset = TensorDataset(input_ids)
-        data_loader = DataLoader(dataset,batch_size = batch_size, shuffle = False,drop_last = False)
+        dataloader = DataLoader(dataset,batch_size = batch_size, shuffle = False,drop_last = False)
         
         #推理
-        preds = self._inference_per_step(data_loader)
+        preds = self._inference_per_step(dataloader)
         
         #保存results获得
-        bar = tqdm(zip(texts,preds))
-        bar.set_description('正在后处理...')
-        for text,pred in bar:
+        for text,pred in tqdm(zip(texts,preds),desc="正在后处理..."):
             self.postprocess(text,pred,print_result = False,save_result = True)
         
         
@@ -529,11 +500,11 @@ class RNNBase(ModelBase):
             my_datasets = self.datasets
             
         train_dataset = TensorDataset(
-            self._tokenizer_for_training(my_datasets['train']['text'],des = "训练集 Tokenizing 进度"),
+            self._tokenizer_for_training(my_datasets['train']['text'],desc = "训练集 Tokenizing 进度"),
             torch.tensor(my_datasets['train']['label'])
             )
         valid_dataset = TensorDataset(
-            self._tokenizer_for_training(my_datasets['valid']['text'],des = "验证集 Tokenizing 进度"),
+            self._tokenizer_for_training(my_datasets['valid']['text'],desc = "验证集 Tokenizing 进度"),
             torch.tensor(my_datasets['valid']['label'])
             )   
         
@@ -556,13 +527,16 @@ class RNNBase(ModelBase):
             self._update_valid_reports(valid_report)
 
             self._report(valid_report)
+            
+            metric = self.key_metric if self.key_metric in valid_report.keys() else 'validation loss'
+            
             if i == 0:
-                self._best_metric = valid_report[self.key_metric]
+                self._best_metric = valid_report[metric]
                 self._best_model = self.model
             else:
-                if self.key_metric.find('loss') != -1 and valid_report[self.key_metric] < self._best_metric:
+                if self.key_metric.find('loss') != -1 and valid_report[metric] < self._best_metric:
                     self._best_model = self.model
-                elif valid_report[self.key_metric] > self._best_metric:
+                elif valid_report[metric] > self._best_metric:
                     self._best_model = self.model
                 else:
                     pass
@@ -581,6 +555,30 @@ class RNNBase(ModelBase):
         if save_path:
             self.save_model(save_path)
     
+    @torch.no_grad()
+    def eval(self,my_dataset,batch_size):
+        #模型
+        self.model = self.model.to(self.device)
+        
+        #准备数据集
+        if my_datasets is None:
+            if len(self.datasets["test"]["text"]) == 0:
+                my_datasets = self.datasets["valid"]
+                print("没有test数据集，使用valid数据验证")
+            else:
+                my_datasets = self.datasets["test"]
+
+        eval_dataset = TensorDataset(
+            self._tokenizer_for_training(my_datasets['text'],desc = "测试集 Tokenizing 进度"),
+            torch.tensor(my_datasets['label'])
+            )
+        
+        eval_dataloader = DataLoader(eval_dataset,batch_size = batch_size, shuffle = False,drop_last = False)
+        
+        eval_report = self._valid_per_step(eval_dataloader)
+        self._report(eval_report)
+
+
     def load_dataset(self,*args,**kwargs):
         '''
         读取数据集。

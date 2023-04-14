@@ -1,5 +1,6 @@
 from ..visualizers import CLSVisualizer
 from ..utils.metrics import metrics_for_cls_with_binary_logits
+import numpy as np
 
 class MCBase:
     def align_config(self):
@@ -15,17 +16,20 @@ class MCBase:
                          label2id = {'LABEL_0':0},
                          )
 
-
-    def _visualize(self,text,labels,probs,save_vis,**kwargs):
-        if not hasattr(self, "visualizer") or self.visualizer is None:
-            self.visualizer = CLSVisualizer()
-        
-        self.visualizer.render(text,labels,probs,save_vis)
+        self.visualizer = CLSVisualizer()
         
     def _calc_resample_prob(self,raw_label,**kwargs):
-        labels = set([k["label"] for k in raw_label])
+        labels = set()
+        for label in raw_label:
+            if label in self.labels:
+                labels.add(label)
+            elif label in self.id2label:
+                labels.add(self.id2label[label])
+            else:       
+                labels.update(set([k["label"] for k in label]))
 
         if hasattr(self, "data_config"):
+            import torch
             p = torch.tensor([self.data_config["counter"][e] for e in self.labels])
             p = 1/ (p/p.sum()+1e-5) #逆频率
             p = p/(p.sum()) #归一化
@@ -36,19 +40,21 @@ class MCBase:
             warn("缺少self.data_config，可能是函数self.update_data_config()没有重写的问题")
             return 0
 
-    def _report_per_sentence(self,text,preds,probs):
-        log = f'text: {text}\n'
-        for idx,prob in enumerate(probs) :
-            log += '\t label: {} \t ; probability : {:.4f}\n'.format(self.id2label[idx],prob)
-        print(log)
- 
-    def _save_per_sentence_result(self,text,preds,probs):
-        result = {}
-        for idx,prob in enumerate(probs) :
-            result[f'label_{idx}'] = self.id2label[idx]
-            result[f'p_{idx}'] = prob
+
+    def postprocess(self,text, logits, **kwargs):
+        logits = logits[0] # logits = (logits, ) ,fetch first of tuple
         
-        self.result[text] = result
+        def sigmoid(z):
+            import numpy as np
+            return 1/(1 + np.exp(-z))
+
+        logits = sigmoid(logits)
+        preds = np.nonzero(logits > 0.5)[0]
+        labels = [self.id2label[pred.item()] for pred in preds]
+        ps = [logits[pred.item()] for pred in preds]
+        return [labels,ps]
+
+
         
     def compute_metrics(self,eval_pred):
         dic = metrics_for_cls_with_binary_logits(eval_pred)

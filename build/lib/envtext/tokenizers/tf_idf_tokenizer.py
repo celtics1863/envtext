@@ -3,8 +3,112 @@ import numpy as np #for np.eye()
 import math
 import jieba
 from collections import Iterable
+from ..utils import TFIDF
+import re
 
 class TFIDFTokenizer:
+    def __init__(self,truncation = True,padding = True,max_length = 128,vocab_path = "default",use_jieba = True, split = "\n"):
+        '''
+        Args:
+            truncate (`bool`): 截断至最大长度 
+                默认：TRUE
+            padding (`bool`): 填充至最大长度 
+                默认：TRUE
+            max_length (`int`): 最大长度
+                默认: 128
+            use_jieba (`bool`): 默认：True
+                使用jieba
+            split (`re.Pattern`):正则表达式，分割的方式
+                [。\n？！；]：使用标点分割
+                \n :使用回车符号分割
+                。:使用句号分割
+                ...
+        '''
+
+        self.vocab = {}
+
+        if use_jieba:
+            jieba.load_userdict(Config.env_vocab)
+            self._jieba_tokenizer = lambda text: jieba.lcut(text)
+        else:
+            self._jieba_tokenizer = lambda text: jieba.lcut(" ".join(text))
+
+        if vocab_path == "default":
+            self.make_vocab(Config.env_vocab)
+        elif vocab_path is not None:
+            self.make_vocab(vocab_path)
+
+        self.truncation = truncation
+        self.padding = padding
+        self.max_length = max_length
+        
+        self.eps = 1e-5
+        self._total_doc_nums = 0
+
+        self.split = split
+
+    def make_vocab(self,path_or_lines):
+        if isinstance(path_or_lines, str):
+            f = open(path_or_lines,'r',encoding = 'utf-8')
+            self.vocab = {line.strip().split(" ")[0]:idx for idx,line in enumerate(f.readlines())}
+        elif isinstance(path_or_lines, Iterable):
+            for line in path_or_lines:
+                for word in self._jieba_tokenizer(line):
+                    if word not in self.vocab:
+                        self.vocab[word] = len(self.vocab)
+
+                self._total_doc_nums += 1
+        
+        self.vector_size = len(self.vocab) #这里没有 +1
+        self._bak_values = np.zeros(self.vector_size,dtype=np.float32).tolist()
+        self.padding_values = self._bak_values.copy()
+        self.unk_values = self._bak_values.copy()
+
+    def _decode_per_word(self,vector):
+        raise NotImplemented
+        
+    def _encode_per_sentence(self,text):
+        list_of_words = [self._jieba_tokenizer(v) for v in re.split(self.split, text) if v]
+        tfidf = TFIDF(list_of_words)
+        vectors = [tfidf.get(word,0) for word in self.vocab]
+
+        if self.truncation:
+            vectors = vectors[:self.max_length]
+        
+        if self.padding:
+            vectors += [self.padding_values] * (self.max_length-len(vectors))
+        return vectors
+    
+    def _distance_for_vectors(self,vA,vB):
+        return max(abs(np.array(vA)-np.array(vB)))
+    
+    def _decode_per_sentence(self,vectors):
+        raise NotImplemented
+
+
+    def decode(self,tokens):
+        raise NotImplemented
+
+                                            
+    def encode(self,texts, return_tensors = None,**kwargs):
+        if isinstance(texts,str):
+            tokens = [self._encode_per_sentence(texts)]
+        elif isinstance(texts,(list,set)):
+            tokens = [self._encode_per_sentence(text) for text in texts]
+        else:
+            raise NotImplemented
+        
+        if return_tensors == 'pt':
+            import torch
+            return torch.tensor(tokens)
+        else:
+            return tokens
+        
+    def __call__(self,texts,return_tensors = None,**kwargs):
+        return self.encode(texts,return_tensors,**kwargs)
+
+
+class TFIDFTokenizerForTokenClassification:
     def __init__(self,truncation = True,padding = True,max_length = 128,vocab_path = None,use_jieba = True):
         '''
         Args:
@@ -26,12 +130,12 @@ class TFIDFTokenizer:
         else:
             self._jieba_tokenizer = lambda text: jieba.cut(" ".join(text))
 
-        if vocab_path is not None:
-            self.make_vocab(vocab_path)
-        elif vocab_path == "default":
+        if vocab_path == "default":
             self.make_vocab(Config.env_vocab)
+        elif vocab_path is not None:
+            self.make_vocab(vocab_path)
 
-
+        
         self.truncation = truncation
         self.padding = padding
         self.max_length = max_length
@@ -45,7 +149,6 @@ class TFIDFTokenizer:
 
         self._total_doc_nums = 0
 
-    
     def make_vocab(self,path_or_lines):
         if isinstance(path_or_lines, str):
             f = open(path_or_lines,'r',encoding = 'utf-8')
@@ -138,6 +241,3 @@ class TFIDFTokenizer:
         
     def __call__(self,texts,return_tensors = None,**kwargs):
         return self.encode(texts,return_tensors,**kwargs)
-        
-        
-        

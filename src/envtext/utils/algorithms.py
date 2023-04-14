@@ -255,9 +255,9 @@ def _tfidf(sents):
     tf = _tf(sents)
     idf = _idf(sents)
 
-    tfidf = Counter({k: tf[k] * idf[k] for k in tf})
+    tfidf = Counter({k: tf[k] * idf[k] for k in tf if k in idf})
     return tfidf
 
 
 def TFIDF(list_of_words:List[List[str]]):
-    return _tfidf(sents)
+    return _tfidf(list_of_words)

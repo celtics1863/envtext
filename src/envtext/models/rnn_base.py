@@ -11,7 +11,7 @@ import os
 class RNNBase(ModelBase):
     def __init__(self,path = None, config = None,model_name = 'lstm', labels = [],num_labels = 0, entities = [],num_entities = 0, ner_encoding = 'BIO' , \
                      max_length = 128, hidden_size = 512 ,num_layers = 3, onehot_embed = False, embed_size = 512, token_method = 'word2vec', \
-                    word2vec_path = None,vocab_path = None, **kwargs):
+                    word2vec_path = None,vocab_path = None, truncation = True,padding=True, remake_vocab= True,**kwargs):
         '''
         RNN模型
         
@@ -88,8 +88,9 @@ class RNNBase(ModelBase):
         self.optim = None
         self.schedule = None
         self.model = None
+        
+        
 
-        self.initialize_config(path = path, **kwargs)
         if path is None:
             self.update_config(
                 model_name = model_name,
@@ -106,8 +107,13 @@ class RNNBase(ModelBase):
                 token_method = token_method,
                 word2vec_path = word2vec_path,
                 vocab_path = vocab_path,
+                truncation = truncation,
+                padding = padding,
+                remake_vocab = remake_vocab,
                 **kwargs
             )
+
+        self.initialize_config(path = path, **kwargs)
 
         self.initialize_tokenizer(path = path,**kwargs)
 
@@ -135,17 +141,18 @@ class RNNBase(ModelBase):
                 vocab_path = os.path.join(path,"vocab.txt")
 
         if self.token_method == "onehot":
-            self.tokenizer = OnehotTokenizer(max_length = self.max_length,padding=True,truncation=True,vocab_path= vocab_path) 
+            self.tokenizer = OnehotTokenizer(max_length = self.max_length,padding=self.config.padding,truncation=self.config.truncation,vocab_path= vocab_path) 
         elif self.token_method == "tf-idf":
-            self.tokenizer = TFIDFTokenizer(max_length = self.max_length,padding=True,truncation=True,vocab_path= vocab_path)
+            self.tokenizer = TFIDFTokenizer(max_length = self.max_length,padding=self.config.padding,truncation=self.config.truncation,vocab_path= vocab_path,split = self.config.split)
         else:
             self.update_config(token_method = "word2vec")
             self.tokenizer = Word2VecTokenizer(max_length = self.max_length,padding=True,truncation=True,word2vec_path=self.config.word2vec_path) 
         
+
         if self.token_method == "onehot":
             self.set_attribute(onehot_embed = True)
         
-    def initialize_config(self,path = None):
+    def initialize_config(self,path = None, **kwargs):
         '''
         初始化配置参数config
          
@@ -155,11 +162,10 @@ class RNNBase(ModelBase):
                  如果path不存在，则初始化一个空的PretrainedConfig()
         '''
         if path is not None:
-            self.config = PretrainedConfig.from_pretrained(path)
-            # print(config)
-        else:
-            self.config = PretrainedConfig()
-        
+            config = PretrainedConfig.from_pretrained(path)
+            self.config.update(config)
+            
+        self.config.update(kwargs)
     
     def align_config(self):
         '''
@@ -182,12 +188,11 @@ class RNNBase(ModelBase):
             if os.path.exists(os.path.join(path,'pytorch_model.bin')):
                 self.load(path)
 
-        if self.datasets and self.token_method in ["onehot","tf-idf"]:
+        if self.datasets and self.token_method in ["onehot","tf-idf"] and self.config.remake_vocab:
             for k,v in self.datasets.items():
                 import re
                 lines =[re.sub("\s","",vv) for vv in v["text"]]
                 self.tokenizer.make_vocab(lines)
-        pass
 
     
     def update_model_path(self,path):
