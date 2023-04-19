@@ -100,7 +100,7 @@ def align_triples_format(triples,callback = None):
             a,r,b = triples[0],triples[1],triples[2]
             texts += g(a,r,b)
         else:
-            raise NotImplemented
+            raise NotImplementedError()
             
     elif isinstance(triples,dict):
         for k,v in triples.items():
@@ -117,7 +117,7 @@ def align_triples_format(triples,callback = None):
                             r,b = triple[1],triple[2]
                             texts += g(k,r,b)
                         else:
-                            raise NotImplemented
+                            raise NotImplementedError()
                 #Dict[List[R,B]]
                 elif isinstance(v[0],str):
                     if len(v) == 3:
@@ -127,7 +127,7 @@ def align_triples_format(triples,callback = None):
                         r,b = v[1],v[2]
                         texts += g(k,r,b)
                     else:
-                        raise NotImplemented
+                        raise NotImplementedError()
             
             elif isinstance(v,dict):
                 for kk,vv in v.items():
@@ -136,12 +136,12 @@ def align_triples_format(triples,callback = None):
                             texts += g(k,kk,b)
                     else:
                         texts += g(k,kk,vv)
-                        raise NotImplemented
+                        raise NotImplementedError()
             else:
-                raise NotImplemented
+                raise NotImplementedError()
             
     else:
-        raise NotImplemented
+        raise NotImplementedError()
     
     return texts
     

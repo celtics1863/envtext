@@ -168,7 +168,7 @@ class ModelBase:
         elif save_path.split('.')[-1] == 'json':
             self._save_result2json(save_path)
         else:
-            raise NotImplemented 
+            raise NotImplementedError() 
     
     def _save_result2json(self,path):
         from ..utils.json_ops import write_json
@@ -263,11 +263,11 @@ class ModelBase:
         '''
         pass
 
-    # def _calc_resample_prob(self,text,label,**kwargs):
-    #     '''
-    #     计算重采样概率，如果需要在训练时对样本进行重采样的话，可以继承后实现
-    #     '''
-    #     return 1
+    def _calc_resample_prob(self,text,label,**kwargs):
+        '''
+        计算重采样概率，如果需要在训练时对样本进行重采样的话，可以继承后实现
+        '''
+        return 0.3
 
     def _resampling_dataset(self,dataset):
         #计算重采样概率
@@ -460,9 +460,6 @@ class ModelBase:
             return results
         
 
-            
-            
-
     def __call__(self,*args,**kwargs):
         return self.predict(*args,**kwargs)
         
@@ -489,10 +486,8 @@ class ModelBase:
 
     def preprocess_for_scorer(self,text,pred,**kwargs):
         '''
-        需要继承后重新实现，对文本进行必要的预处理（清洗）。
         评价模型的预处理步骤
         '''
-        text_or_tokens
         return text_or_tokens
 
 
@@ -763,12 +758,18 @@ class ModelBase:
             for k,values in dic.items():
                 report += f'{k}: \t'
                 for v in values:
-                    report += '{:.4f} \t'.format(v)
+                    try:
+                        report += '{:.4f} \t'.format(v)
+                    except:
+                        report += ' --- \t'
                 report += '\n'
         else:
             report = ''
             for k,v in dic.items():
-                report += '{} \t : {:.4f} \t \n'.format(k,v)
+                try:
+                    report += '{} \t : {:.4f} \t \n'.format(k,v)
+                except:
+                    report += '{} \t : --- \t \n'.format(k)
         print(report)
                                  
     def _ipython_report(self,dic):
@@ -787,21 +788,28 @@ class ModelBase:
             for values in zip(*dic.values()):
                 markdown += '|'
                 for v in values:
-                    markdown += '{:.4f}|'.format(v)
+                    try:
+                        markdown += '{:.4f}|'.format(v)
+                    except:
+                        markdown += ' --- |'
                 markdown += '|  \n'
         else:
             markdown += '|'
             for k,v in dic.items():
-                markdown += '{:.4f}|'.format(v)
+                try:
+                    markdown += '{:.4f}|'.format(v)
+                except:
+                    markdown += ' --- |'
             markdown += '  \n'
             
         from IPython.display import display_markdown
         display_markdown(markdown,raw = True)
 
     def _report(self,dic):
-        try:
+        from ..utils.notebook_ops import in_notebook
+        if in_notebook():
             self._ipython_report(dic)
-        except:
+        else:
             self._raw_report(dic)
 
     def train(self,my_datasets,epoch ,batch_size , learning_rate ,save_path ,checkpoint_path,**kwargs):
@@ -978,22 +986,10 @@ class ModelBase:
                   |text3| label3| test  |
         '''
         try:
-            try:
-                new_kwargs = self.config.to_dict()
-                new_kwargs.update(kwargs)
-            except:
-                new_kwargs = kwargs
-            self.datasets,self.data_config = load_dataset(*args,**new_kwargs)
+            new_kwargs = self.config.to_dict()
+            new_kwargs.update(kwargs)
+        except:
+            new_kwargs = kwargs
+        self.datasets,self.data_config = load_dataset(*args,**new_kwargs)
 
-            print("*"*7,"读取数据集成功","*"*7)
-        except Exception as e:
-            print("*"*7,"读取数据集失败","*"*7)
-            print(f"错误为: \n {e}")
-            
-
-#     def load_inference_dataset(self,*args,**kwargs):
-#         try:
-#             self.datasets,self.data_config = load_train_dataset(*args,**kwargs)
-#             print("*"*7,"读取数据集成功","*"*7)
-#         except Exception as e:
-#             print("*"*7,"读取数据集失败","*"*7)
+        print("*"*7,"读取数据集成功","*"*7)

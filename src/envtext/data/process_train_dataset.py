@@ -11,7 +11,7 @@ class LoadDataset:
         if isinstance(js,dict):
             return isinstance(js[list(js.keys())[0]],dict)
         elif isinstance(js,list):
-            raise NotImplemented
+            raise NotImplementedError()
 
 
     @staticmethod
@@ -49,7 +49,7 @@ class LoadDataset:
             elif task == 'NER':
                 return generate_ner_datasets(js,**kwargs)
             else:
-                raise NotImplemented
+                raise NotImplementedError()
         else:
             if task == 'CLS':
                 return generate_cls_datasets_label_as_key(js,**kwargs)
@@ -58,7 +58,7 @@ class LoadDataset:
             elif task == 'NER':
                 return generate_ner_datasets_label_as_key(js,**kwargs)
             else:
-                raise NotImplemented
+                raise NotImplementedError()
                 
 
 def generate_reg_datasets(js,train = "train",valid = "valid",test = "test",text = "text",label = "label",**kwargs):

@@ -88,7 +88,7 @@ class Word2VecTokenizer:
                 vectors = self._encode_per_sentence(text, encode_for_bert = encode_for_bert)
                 tokens.append(vectors)
         else:
-            raise NotImplemented
+            raise NotImplementedError()
         
         if return_tensors == 'pt':
             import torch

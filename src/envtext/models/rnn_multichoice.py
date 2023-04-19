@@ -8,7 +8,7 @@ from ..utils.metrics import metrics_for_cls_with_binary_logits
 from .mc_base import MCBase
 
 class RNNMultiCLSModel(nn.Module):
-    def __init__(self,length,token_size,hidden_size ,num_layers, num_classes, onehot_embed = False, embed_size = None  , model_name ='lstm'):
+    def __init__(self,length,token_size,hidden_size ,num_layers, num_classes, onehot_embed = False, embed_size = None  , rnn_type ='lstm'):
         super().__init__()
         
         self.onehot_embed = onehot_embed
@@ -22,13 +22,15 @@ class RNNMultiCLSModel(nn.Module):
                 self.proj_layer = nn.Identity()
                 embed_size = token_size
             
-        if model_name.lower() == 'lstm':
+        if rnn_type.lower() == 'lstm':
             self.rnn = nn.LSTM(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        elif model_name.lower() == 'gru':
+        elif rnn_type.lower() == 'gru':
             self.rnn = nn.GRU(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        elif model_name.lower() == 'rnn':
+        elif rnn_type.lower() == 'rnn':
             self.rnn = nn.RNN(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        
+        else:
+            raise NotImplementedError()
+            
         self.fc = nn.Sequential(
             nn.Flatten(),
             nn.Linear(length*hidden_size*2,num_classes)

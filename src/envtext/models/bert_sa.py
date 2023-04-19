@@ -4,7 +4,7 @@ from torch import nn #for nn.linear
 import torch.nn.functional as F
 from transformers import BertPreTrainedModel,BertTokenizer,BertTokenizerFast,BertConfig,BertModel
 # from ..tokenizers import WoBertTokenizer
-from ..utils.metrics import metrics_for_reg
+from .sa_base import SABase
 
 class BertREG(BertPreTrainedModel):
     def __init__(self, config):
@@ -29,14 +29,14 @@ class BertREG(BertPreTrainedModel):
         logits = self.regressor(cls_output)
 #         logits = (torch.tanh(logits)+1)/2
 
-        outputs = (logits,)
         if labels is not None:
             loss = self.loss(logits.squeeze(),labels)
-            outputs = (loss,) + outputs
-        return outputs
+            return (loss,logits)
+        else:
+            return (logits,)
 
 
-class BertSA(BertBase):
+class BertSA(SABase,BertBase):
     '''
     Bert情感分析/回归模型
     
@@ -58,25 +58,10 @@ class BertSA(BertBase):
         if self.key_metric == 'validation loss':
             self.set_attribute(key_metric = 'rmse')
         
-    def postprocess(self,text, logits, print_result = True ,save_result = True):
-        logits = logits.squeeze()
-        if print_result:
-            self._report_per_sentence(text,logits)
-        
-        if save_result:
-            self._save_per_sentence_result(text,logits)
-            
-            
-    def _report_per_sentence(self,text,score):
-        log = 'text:{} score: {:.4f} \n '.format(text,score)
-        print(log)
-    
-    def _save_per_sentence_result(self,text,score):
-        result = {
-            'label':'{:.4f}'.format(score)
-        }
-        self.result[text] = result
-        
-    def compute_metrics(self,eval_pred):
-        dic = metrics_for_reg(eval_pred)
-        return dic
+
+    def initialize_config(self,*args,**kwargs):
+        super().initialize_config(*args,**kwargs)
+
+        self.set_attribute(model_name="bert_sa")
+
+

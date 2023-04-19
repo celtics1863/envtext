@@ -174,13 +174,13 @@ class BertBase(ModelBase):
         '''
         获得训练集metrics报告
         '''
-        raise NotImplemented
+        raise NotImplementedError()
     
     def get_valid_reports(self):
         '''
         获得验证集metrics报告
         '''
-        raise NotImplemented
+        raise NotImplementedError()
         
         
     def _tokenizer_for_inference(self,texts,des):

@@ -584,7 +584,7 @@ def metrics_for_cls(eval_pred):
         labels = np.nonzero(np.array(labels) > 0.5)[1]
         
     else:
-        raise NotImplemented
+        raise NotImplementedError()
     
     eval_pred = (predictions,labels)
     if len(LABLES) == 2:

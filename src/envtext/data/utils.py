@@ -193,7 +193,7 @@ def load_dataset(path,task = None,format = None , sampler = 1 ,split=0.5,label_a
     elif format in ['excel','csv','xlsx','xls']:
         datasets,config = LoadExcel.load_dataset(**kwargs)
     else:
-        raise NotImplemented
+        raise NotImplementedError()
     
     if sampler:
         datasets = sampler_dataset(datasets,sampler)

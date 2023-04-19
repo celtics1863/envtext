@@ -65,7 +65,7 @@ class TFIDFTokenizer:
         self.unk_values = self._bak_values.copy()
 
     def _decode_per_word(self,vector):
-        raise NotImplemented
+        raise NotImplementedError()
         
     def _encode_per_sentence(self,text):
         list_of_words = [self._jieba_tokenizer(v) for v in re.split(self.split, text) if v]
@@ -83,11 +83,11 @@ class TFIDFTokenizer:
         return max(abs(np.array(vA)-np.array(vB)))
     
     def _decode_per_sentence(self,vectors):
-        raise NotImplemented
+        raise NotImplementedError()
 
 
     def decode(self,tokens):
-        raise NotImplemented
+        raise NotImplementedError()
 
                                             
     def encode(self,texts, return_tensors = None,**kwargs):
@@ -96,7 +96,7 @@ class TFIDFTokenizer:
         elif isinstance(texts,(list,set)):
             tokens = [self._encode_per_sentence(text) for text in texts]
         else:
-            raise NotImplemented
+            raise NotImplementedError()
         
         if return_tensors == 'pt':
             import torch
@@ -231,7 +231,7 @@ class TFIDFTokenizerForTokenClassification:
         elif isinstance(texts,(list,set)):
             tokens = [self._encode_per_sentence(text) for text in texts]
         else:
-            raise NotImplemented
+            raise NotImplementedError()
         
         if return_tensors == 'pt':
             import torch

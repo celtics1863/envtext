@@ -134,7 +134,7 @@ class OnehotTokenizer:
         elif isinstance(texts,(list,set)):
             tokens = [self._encode_per_sentence(text) for text in texts]
         else:
-            raise NotImplemented
+            raise NotImplementedError()
         
         if return_tensors == 'pt':
             import torch

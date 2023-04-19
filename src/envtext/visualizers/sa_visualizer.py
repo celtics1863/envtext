@@ -9,10 +9,12 @@ class SAVisualizer(VisualizerBase):
         """
     
     def __init__(self,*args,**kwargs):
+        self.range = kwargs.pop("range",[[0,1]])
         super().__init__(*args,**kwargs)
+
         
     
-    def generate_html(self,text,labels,ranges = None,*args,**kwargs):
+    def generate_html(self,text,labels,*args,**kwargs):
         '''
         text:文本
         labels：值
@@ -25,10 +27,7 @@ class SAVisualizer(VisualizerBase):
           "value": "0",
             }
 
-        if ranges is None:
-            ranges = [(0,1) for i in range(len(labels))]
-
-        for idx,(label,_range) in enumerate(zip(labels,ranges)):
+        for idx,(label,_range) in enumerate(zip(labels,self.range)):
             param = params.copy()
             param['value'] = label - _range[0]
             param['max'] = _range[1] - _range[0]

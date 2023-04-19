@@ -97,9 +97,8 @@ class NERBase:
             preds = torch.tensor(output[1][1:-1])
             logits = torch.tensor(output[0][1:-1])
             entities,locs,labels = self._decode(text,preds)
-
-        # return self._convert_label2result(text,entities,labels)
-
+        else:
+            raise NotImplementedError()
         return entities,labels
 
 

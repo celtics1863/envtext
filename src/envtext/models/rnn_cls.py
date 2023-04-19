@@ -8,7 +8,7 @@ from .cls_base import CLSBase
 
 
 class RNNCLSModel(nn.Module):
-    def __init__(self,length,token_size,hidden_size ,num_layers, num_classes, onehot_embed = False, embed_size = None  , model_name ='lstm',**kwargs):
+    def __init__(self,length,token_size,hidden_size ,num_layers, num_classes, onehot_embed = False, embed_size = None  , rnn_type ='lstm',**kwargs):
         super().__init__()
         self.onehot_embed = onehot_embed
         if onehot_embed:
@@ -20,13 +20,15 @@ class RNNCLSModel(nn.Module):
                 self.proj_layer = nn.Identity()
                 embed_size = token_size
             
-        if model_name.lower() == 'lstm':
+        if rnn_type.lower() == 'lstm':
             self.rnn = nn.LSTM(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        elif model_name.lower() == 'gru':
+        elif rnn_type.lower() == 'gru':
             self.rnn = nn.GRU(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        elif model_name.lower() == 'rnn':
+        elif rnn_type.lower() == 'rnn':
             self.rnn = nn.RNN(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        
+        else:
+            raise NotImplementedError()
+
         self.fc = nn.Sequential(
             nn.Flatten(),
             nn.Linear(length*hidden_size*2,num_classes)
@@ -58,7 +60,7 @@ class RNNCLS(CLSBase,RNNBase):
                          self.config.num_labels,
                          self.config.onehot_embed,
                          self.config.embed_size,
-                         self.config.model_name,
+                         self.config.rnn_type,
                          **kwargs
                         )
         self.model = self.model.to(self.device)

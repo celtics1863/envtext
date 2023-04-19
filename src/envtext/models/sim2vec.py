@@ -50,7 +50,7 @@ class Sim2Vec:
                 jieba.load_userdict(Config.env_vocab)
                 self.vocab = load_jieba_vocab(Config.env_vocab)
             else:
-                raise NotImplemented
+                raise NotImplementedError()
 
 
         self._mapping = {word:idx for idx,word in enumerate(self.vocab.keys())}
@@ -84,7 +84,7 @@ class Sim2Vec:
         elif isinstance(text, (list,tuple)):
             words = list(text)
         else:
-            raise NotImplemented
+            raise NotImplementedError()
 
         vec = np.zeros(self.vector_size)
         for word in words:

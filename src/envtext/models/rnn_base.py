@@ -9,7 +9,7 @@ import numpy as np
 import os
 
 class RNNBase(ModelBase):
-    def __init__(self,path = None, config = None,model_name = 'lstm', labels = [],num_labels = 0, entities = [],num_entities = 0, ner_encoding = 'BIO' , \
+    def __init__(self,path = None, config = None,rnn_type = 'lstm', labels = [],num_labels = 1, entities = [],num_entities = 0, ner_encoding = 'BIO' , \
                      max_length = 128, hidden_size = 512 ,num_layers = 3, onehot_embed = False, embed_size = 512, token_method = 'word2vec', \
                     word2vec_path = None,vocab_path = None, truncation = True,padding=True, remake_vocab= True,**kwargs):
         '''
@@ -27,7 +27,7 @@ class RNNBase(ModelBase):
         Kwargs:
             Kwargs中都是模型的配置参数。
             
-            model_name [Optional] `str`: 默认'LSTM'
+            rnn_type [Optional] `str`: 默认'LSTM'
                 模型的名称，可以选择'lstm','rnn','gru'三者之一。
                 模型默认是双向(bidirectional)的。
             
@@ -89,11 +89,10 @@ class RNNBase(ModelBase):
         self.schedule = None
         self.model = None
         
-        
 
         if path is None:
             self.update_config(
-                model_name = model_name,
+                rnn_type = rnn_type,
                 labels = labels,
                 num_labels = num_labels,
                 entities = entities,

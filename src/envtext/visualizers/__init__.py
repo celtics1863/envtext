@@ -3,3 +3,4 @@ from .cls_visualizer import CLSVisualizer
 from .span_visualizer import SpanVisualizer
 from .dependency_visualizer import DependencyVisualizer
 from .pos_visualizer import POSVisualizer
+from .sa_visualizer import SAVisualizer

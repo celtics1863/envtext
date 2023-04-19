@@ -108,7 +108,7 @@ def convert_label2onehot(ids,labels):
     elif isinstance(ids,str):
         onehot[labels.index(ids)] = 1.
     else:
-        raise NotImplemented
+        raise NotImplementedError()
     return onehot
 
 
@@ -996,7 +996,7 @@ class NERLabelConverter:
         elif encoding == "Pointer":
             ids = np.ones((self.max_entities,3),dtype=np.int64) * (-100)
         else:
-            raise NotImplemented
+            raise NotImplementedError()
 
         if isinstance(annos,(tuple,list)):
             for v in annos:
@@ -1013,7 +1013,7 @@ class NERLabelConverter:
                     else:
                         start,end = v[self.loc_name]
                 else:
-                    raise NotImplemented
+                    raise NotImplementedError()
                 #[start,end]左闭右闭
                 end += 1
                 entity = text[start:end]
@@ -1042,7 +1042,7 @@ class NERLabelConverter:
                                 entity = text[start:end]
                                 self.encode_per_entity(entity,entity_label,(start,end),ids,encoding)
                             else:
-                                raise NotImplemented
+                                raise NotImplementedError()
                     
                     #{entity_label:[{'loc':[0,3]},{'loc':[5,9]}]}
                     #{entity_label:[{'start':0,'end':3},{'start':0,'end':3}]}
@@ -1096,7 +1096,7 @@ class NERLabelConverter:
                                 entity = text[start:end]
                                 self.encode_per_entity(entity,entity_label,(start,end),ids,encoding)
                             else:
-                                raise NotImplemented
+                                raise NotImplementedError()
                         
                         #{entity_label:{entity:{'loc':...}}
                         elif isinstance(vv,dict): 
@@ -1118,7 +1118,7 @@ class NERLabelConverter:
                                 entity = text[start:end]
                                 self.encode_per_entity(entity,entity_label,(start,end),ids,encoding)
                             else:
-                                raise NotImplemented
+                                raise NotImplementedError()
              
         #padding 
         if self.encoding in ["IO","BIO","BIOE","BIOES"]:

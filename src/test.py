@@ -1,9 +1,14 @@
 from envtext import  BertCLS,BertNER,AlbertNER,Config,CNNCLS,RNNCLS,TFIDFTokenizer,TFIDFCLS,RNNMultiChoice
 
-model = BertCLS(Config.bert.bert_mlm)
+from envtext import Bert2Vec,Config,RNNNER,load_dataset
+model = RNNNER()
+model.load_dataset("../../pos数据集.txt", format="text2",label_inline=True,ner_encoding="BIOES",task="ner")
 
-model.load_dataset("isClimate")
-model.train(epoch=3,batch_size=4)
+model.train(epoch=12,batch_size=16)
+# model = BertCLS(Config.bert.bert_mlm)
+
+# model.load_dataset("isClimate")
+# model.train(epoch=3,batch_size=4)
 
 # model = BertNER("../../../2022Spring/EnvText/models/pos/",visualizer="pos")
 # model = AlbertNER(Config.albert.pos_ner,visualizer="pos")
@@ -30,9 +35,9 @@ model.train(epoch=3,batch_size=4)
 # # model("哈哈哈。呵呵哈哈哈")
 
 
-model = RNNMultiChoice()
+# model = RNNMultiChoice()
 
-model.load_dataset()
+# model.load_dataset()
 
 # model.load_dataset("../../../2022Spring/EnvText/EnvCLUE数据集/CLS_PaperSubject.json",task="cls")
 # model.train(learning_rate = 1e-3,epoch=20,batch_size=16)

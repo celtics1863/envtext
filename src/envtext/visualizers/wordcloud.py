@@ -208,7 +208,7 @@ class WordCloud:
             if isinstance(texts,pd.Series):
                 lines = texts.values.tolist()
             else:
-                raise NotImplemented
+                raise NotImplementedError()
         
         return lines,format
     

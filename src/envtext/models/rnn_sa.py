@@ -3,11 +3,10 @@ import torch
 import torch.nn.functional as F
 from .rnn_base import RNNBase
 from ..tokenizers import Word2VecTokenizer,OnehotTokenizer
-
-from ..utils.metrics import metrics_for_reg
+from .sa_base import SABase
 
 class RNNREGModel(nn.Module):
-    def __init__(self,length,token_size,hidden_size ,num_layers, onehot_embed, embed_size = None  , model_name ='lstm'):
+    def __init__(self,length,token_size,hidden_size ,num_layers, onehot_embed, embed_size = None  , rnn_type ='lstm'):
         super().__init__()
         
         self.onehot_embed = onehot_embed
@@ -21,13 +20,15 @@ class RNNREGModel(nn.Module):
                 self.proj_layer = nn.Identity()
                 embed_size = token_size
             
-        if model_name.lower() == 'lstm':
+        if rnn_type.lower() == 'lstm':
             self.rnn = nn.LSTM(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        elif model_name.lower() == 'gru':
+        elif rnn_type.lower() == 'gru':
             self.rnn = nn.GRU(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        elif model_name.lower() == 'rnn':
+        elif rnn_type.lower() == 'rnn':
             self.rnn = nn.RNN(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        
+        else:
+            raise NotImplementedError()
+            
         self.fc = nn.Sequential(
             nn.Flatten(),
             nn.Linear(length*hidden_size*2,1)
@@ -49,7 +50,7 @@ class RNNREGModel(nn.Module):
             outputs = (loss,) + outputs
         return outputs
     
-class RNNSA(RNNBase):
+class RNNSA(SABase,RNNBase):
     def initialize_rnn(self,path = None,config = None,**Kwargs):
         super().initialize_rnn(path,config,**Kwargs)
         self.model = RNNREGModel(self.config.max_length,
@@ -65,30 +66,9 @@ class RNNSA(RNNBase):
         if self.key_metric == 'validation loss':
             self.set_attribute(key_metric = 'rmse')
 
-    def postprocess(self,text, logits, print_result = True ,save_result = True):
-        # logits = logits.squeeze()
-        logits = logits[0]
 
-        return logits
+    def initialize_config(self, *args, **kwargs):
+        super().initialize_config(*args,**kwargs)
+
+        self.set_attribute(model_name = "rnn_sa")
         
-    #     if print_result:
-    #         self._report_per_sentence(text,logits)
-        
-    #     if save_result:
-    #         self._save_per_sentence_result(text,logits)
-            
-            
-    # def _report_per_sentence(self,text,score):
-    #     log = 'text:{} score: {:.4f} \n '.format(text,score)
-    #     print(log)
-    #     self.result[text].append(score)
-    
-    # def _save_per_sentence_result(self,text,score):
-    #     result = {
-    #         'label':':.4f'.format(score)
-    #     }
-    #     self.result[text] = result
-        
-    # def compute_metrics(self,eval_pred):
-    #     dic = metrics_for_reg(eval_pred)
-    #     return dic

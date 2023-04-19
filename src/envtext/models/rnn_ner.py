@@ -9,7 +9,7 @@ from ..utils.metrics import metrics_for_ner
 from .ner_base import NERBase
 
 class RNNNERModel(nn.Module):
-    def __init__(self,length,token_size,hidden_size ,num_layers, num_classes, onehot_embed = False ,embed_size = None,  model_name ='lstm'):
+    def __init__(self,length,token_size,hidden_size ,num_layers, num_classes, onehot_embed = False ,embed_size = None,  rnn_type ='lstm'):
         super().__init__()
         self.onehot_embed = onehot_embed
 
@@ -22,13 +22,15 @@ class RNNNERModel(nn.Module):
                 self.proj_layer = nn.Identity()
                 embed_size = token_size
 
-        if model_name.lower() == 'lstm':
+        if rnn_type.lower() == 'lstm':
             self.rnn = nn.LSTM(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        elif model_name.lower() == 'gru':
+        elif rnn_type.lower() == 'gru':
             self.rnn = nn.GRU(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        elif model_name.lower() == 'rnn':
+        elif rnn_type.lower() == 'rnn':
             self.rnn = nn.RNN(embed_size, hidden_size ,num_layers,bias = True,batch_first = True,dropout = 0.1,bidirectional = True) 
-        
+        else:
+            raise NotImplementedError()
+
         self.fc = nn.Linear(hidden_size*2,num_classes)
         
         self.crf = CRF(num_classes,batch_first=True)
@@ -58,9 +60,11 @@ class RNNNERModel(nn.Module):
                 loss_mask = labels.gt(-1)
             
             labels[~loss_mask] = 0
+            loss_mask[:,0] = True #the first stamp must be on
             loss = self.crf(logits, labels.long(), mask = loss_mask.bool()) * (-1)
 
             outputs = (loss,) + outputs
+
         elif self.crf:
             labels = self.crf.decode(logits)      
             outputs = outputs + (labels,)
@@ -71,16 +75,16 @@ class RNNNER(NERBase,RNNBase):
     def initialize_rnn(self,path = None,config = None,**kwargs):
         super().initialize_rnn(path,config,**kwargs)
 
-
         self.model = RNNNERModel(self.config.max_length,
-                         self.tokenizer.vector_size,
-                         self.config.hidden_size,
-                         self.config.num_layers,
-                         self.config.num_labels,
-                         self.config.onehot_embed,
-                         self.config.embed_size,
-                         self.config.model_name
+                        self.tokenizer.vector_size,
+                        self.config.hidden_size,
+                        self.config.num_layers,
+                        self.config.num_labels,
+                        self.config.onehot_embed,
+                        self.config.embed_size,
+                        self.config.rnn_type
                         )
+
         
         self.model = self.model.to(self.device)
         if self.key_metric == 'validation loss':
@@ -165,26 +169,21 @@ class RNNNER(NERBase,RNNBase):
         text = re.sub("\s", "",text)
         return text
         
-    def postprocess(self,text,logits, print_result = True, save_result = True,return_result = False,save_vis = None):
-        logits = torch.tensor(logits)
-        logits = F.softmax(logits,dim=-1)
-
+    def postprocess(self,text,output, **kwargs):
+        '''
+        后处理
+        '''
+        import re
+        text = re.sub("\s","",text)
         text = list(self.tokenizer._jieba_tokenizer(text))
+        preds = torch.tensor(output[1][1:-1])
+        logits = torch.tensor(output[0][1:-1])
+        entities,locs,labels = self._decode(text,preds)
 
-        if self.viterbi:
-            labels,locs,classes,probs = self._viterbi_decode(text,logits)
-        else:
-            pred = torch.argmax(logits,dim=-1)
-            labels,locs,classes,probs = self._decode(text,pred,logits)
-        
-        if print_result:
-            try:
-                self._visualize(text,classes,locs,save_vis)
-            except:
-                self._report_per_sentence(text,labels,classes,probs)
-        
-        if save_result:
-            self._save_per_sentence_result(text,labels,locs,classes,probs)
-            
-        if return_result:
-            return self._convert_label2result(text,classes,locs)
+        return entities,labels
+
+    
+    def initialize_config(self, *args, **kwargs):
+        super().initialize_config(*args,**kwargs)
+
+        self.set_attribute(model_name = "rnn_ner")
